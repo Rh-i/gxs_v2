@@ -12,7 +12,7 @@ for %%i in ("%~dp0\..") do (
     set "FOLDER_NAME=%%~nxi"
 )
 
-set "PROJECT_NAME=GXS_V2"
+set "PROJECT_NAME=gxs_v2"
 if "%PROJECT_NAME%"=="" set "PROJECT_NAME=%FOLDER_NAME%"
 
 set "BUILD_TYPE=%~1"

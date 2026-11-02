@@ -25,5 +25,5 @@
 
 ## 当前状态
 
-GXS_V2 是接入骨架，还没有业务模块。加第一个模块时，建议先照 `user/app/task/demo_task.cpp`
+gxs_v2 是接入骨架，还没有业务模块。加第一个模块时，建议先照 `user/app/task/demo_task.cpp`
 的写法把任务骨架搭起来，再往里填逻辑。

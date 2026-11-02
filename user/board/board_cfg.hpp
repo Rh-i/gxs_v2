@@ -1,6 +1,6 @@
 /**
  * @file board_cfg.hpp
- * @brief 板级实例配置（GXS_V2）
+ * @brief 板级实例配置（gxs_v2）
  *
  * @details 本工程目前是**接入骨架**：只开了一路调试串口 + DWT，用来验证
  *          「CubeMX 工程 → submodule → integrate.py → 编译出 elf」这条链路。

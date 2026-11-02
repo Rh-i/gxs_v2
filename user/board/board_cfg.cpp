@@ -1,6 +1,6 @@
 /**
  * @file board_cfg.cpp
- * @brief board_init()：把 board_cfg.hpp 里的实例逐个 init()（GXS_V2）
+ * @brief board_init()：把 board_cfg.hpp 里的实例逐个 init()（gxs_v2）
  *
  * @details 【本文件只放一件事】`board_init()`。实例本身都在 board_cfg.hpp 里（`inline`）。
  *
