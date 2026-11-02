@@ -152,6 +152,26 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
+  /* stm32_framework：见 templates/linker_sections.ld（.dma_buffer 可加载，放 BspUart / BspSpi 实例；.noinit 放 fault_record） */
+  .dma_buffer :
+  {
+    . = ALIGN(32);
+    __dma_buffer_start = .;
+    *(.dma_buffer)
+    *(.dma_buffer*)
+    . = ALIGN(32);
+    __dma_buffer_end = .;
+  } >RAM_D1 AT> FLASH
+  __dma_buffer_load = LOADADDR(.dma_buffer);
+
+  .noinit (NOLOAD) :
+  {
+    . = ALIGN(4);
+    *(.noinit)
+    *(.noinit*)
+    . = ALIGN(4);
+  } >RAM_D1
+
   /* used by the startup to initialize data */
   _sidata = LOADADDR(.data);
 

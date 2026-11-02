@@ -158,7 +158,18 @@ See http://www.FreeRTOS.org/RTOS-Cortex-M3-M4.html. */
 /* Normal assert() semantics without relying on the provision of an assert.h
 header file. */
 /* USER CODE BEGIN 1 */
-#define configASSERT( x ) if ((x) == 0) {taskDISABLE_INTERRUPTS(); for( ;; );}
+#if defined(__ICCARM__) || defined(__CC_ARM) || defined(__GNUC__)
+#ifdef __cplusplus
+extern "C" {
+#endif
+void fault_on_assert(const char *file, int line);
+void fault_on_stack_overflow(const char *task_name);
+void fault_on_malloc_failed(void);
+#ifdef __cplusplus
+}
+#endif
+#endif
+#define configASSERT( x ) if ((x) == 0) { fault_on_assert(__FILE__, __LINE__); }
 /* USER CODE END 1 */
 
 /* Definitions that map the FreeRTOS port interrupt handlers to their CMSIS
