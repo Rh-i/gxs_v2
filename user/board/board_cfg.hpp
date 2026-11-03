@@ -58,9 +58,8 @@ inline __attribute__((section(".dma_buffer"))) BspUartT<uart_mode::it, 128, 128>
 #define print_uart(...) bsp_uart1.printf(__VA_ARGS__)
 
 /**
- * DWT 计时：sys_task 用它算 10 ms 循环耗时，必须在 board_init() 里第一个 init()。
- * 频率由 RCC 自动推算，没有配置项。
+ * DWT 计时：由库内部初始化（实例与 `init()` 都在 `system.cpp` 的 `system_init()` 里）。
+ * 头文件包含后直接调用 bsp_dwt.get_delta_s() / get_time_s() 即可。
  */
-inline BspDwt bsp_dwt {};
 
 #endif // __BOARD_CFG_HPP__

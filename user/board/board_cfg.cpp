@@ -23,8 +23,7 @@
 
 void board_init(void)
 {
-  // 计时基准：sys_task 用它算 10 ms 周期内的耗时，必须最先起来
-  configASSERT(bsp_dwt.init() == Status::OK);
+  // 计时基准 bsp_dwt 由 system_init() 内部 init()，这里不再重复初始化
 
   // 调试串口
   configASSERT(bsp_uart1.init() == Status::OK);
