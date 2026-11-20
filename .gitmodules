@@ -1,3 +1,6 @@
 [submodule "Middlewares/Third_Party/stm32-framework"]
 	path = Middlewares/Third_Party/stm32-framework
 	url = https://github.com/cubot-refactor-code-plan/stm32-framework.git
+[submodule "Middlewares/Third_Party/ICBSP"]
+	path = Middlewares/Third_Party/ICBSP
+	url = https://github.com/cubot-refactor-code-plan/ICBSP.git
