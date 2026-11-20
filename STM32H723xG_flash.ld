@@ -152,7 +152,7 @@ SECTIONS
     . = ALIGN(4);
   } >FLASH
 
-  /* stm32_framework：见 templates/linker_sections.ld（.dma_buffer 可加载，放 BspUart / BspSpi 实例；.noinit 放 fault_record） */
+  /* icbsp：见 templates/linker_sections.ld（.dma_buffer 可加载，放 BspUart / BspSpi 实例；.noinit 放 fault_record） */
   .dma_buffer :
   {
     . = ALIGN(32);
@@ -162,7 +162,7 @@ SECTIONS
     . = ALIGN(32);
     __dma_buffer_end = .;
   } >RAM_D1 AT> FLASH
-  __dma_buffer_load = LOADADDR(.dma_buffer);
+  __dma_buffer_load = LOADADDR(.dma_buffer) + (__dma_buffer_start - ADDR(.dma_buffer)); /* 段内 ALIGN(32) 会让起点后移，加载地址同样偏移 */
 
   .noinit (NOLOAD) :
   {

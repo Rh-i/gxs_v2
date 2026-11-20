@@ -85,8 +85,6 @@
                 "clear": true
             }
         },
-        /* ==================== 烧录 ==================== */
-        // 脚本自己递归找 build/ 下的 .elf，不需要 VS Code 传路径
         {
             "label": "OpenOCD_flash",
             "detail": "OpenOCD + CMSIS-DAP 烧录",

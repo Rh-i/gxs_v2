@@ -9,7 +9,8 @@
     // 调试时变量按自然类型显示（寄存器位域不会显示成十进制大数）
     "cortex-debug.variableUseNaturalFormat": true,
     "cmake.useCMakePresets": "always",
-    // 状态栏按钮，对应 tasks.json 里的任务 label
+    // 状态栏按钮（Task Buttons 插件 spencerwmiles.vscode-task-buttons），对应 tasks.json 里的任务 label；
+    // 生成 Flash/ 时 integrate.py 再追加烧录按钮（templates/vscode/settings_flash.json）
     "VsCodeTaskButtons.showCounter": false,
     "VsCodeTaskButtons.tasks": [
         {
@@ -30,26 +31,25 @@
         {
             "label": "[⚡ DAP烧录]",
             "task": "OpenOCD_flash",
-            "tooltip": "OpenOCD + DAPLink 烧录"
+            "tooltip": "OpenOCD + DAPLink 烧录（外置 Flash 方案：bootloader + QSPI 镜像）"
         },
         {
             "label": "[🔌 JLink烧录]",
             "task": "JLink_flash",
-            "tooltip": "经 OpenOCD 的 jlink 适配器烧录"
+            "tooltip": "经 OpenOCD 的 jlink 适配器烧录（只支持片内 Flash）"
         }
     ],
-    // 源码用两种注释分区：`// ---------------- 标题 ----------------`（.cpp 多用）和
-    // `/* ==================== 标题 ==================== */`（.hpp 多用），一条正则同时认。
-    // `{16,}` 而不是 `{16}`：库里写的是 20 个等号，定长会把多余的 `====` 吃进标题。
-    // 说明见 docs/编辑器配置.md
+    // 分区注释只认一种写法：`/* ==================== 标题 ==================== */` … `/* ==================== */`
+    // 等号**正好 20 个**（不是 {16,}）；每个区必须成对收尾，**不能嵌套，全部扁平化**。
+    // `// ----------------` 这种行注释不再识别。说明见 docs/编辑器配置.md（ICBSP）
     "outlinePlus.regionBoundaryPatternByLanguageId": {
         "c": {
-            "startRegex": "^\\s*(?://+\\s*-{16,}|/\\*+\\s*={16,})\\s*(.+?)\\s*(?:-{16,}|={16,})(?:\\s*\\*/)?\\s*$",
-            "endRegex": "^\\s*(?://+\\s*-{16,}|/\\*+\\s*={16,})\\s*(?:-{16,}|={16,})(?:\\s*\\*/)?\\s*$"
+            "startRegex": "^\\s*/\\* ={20} (.+) ={20} \\*/\\s*$",
+            "endRegex": "^\\s*/\\* ={20} \\*/\\s*$"
         },
         "cpp": {
-            "startRegex": "^\\s*(?://+\\s*-{16,}|/\\*+\\s*={16,})\\s*(.+?)\\s*(?:-{16,}|={16,})(?:\\s*\\*/)?\\s*$",
-            "endRegex": "^\\s*(?://+\\s*-{16,}|/\\*+\\s*={16,})\\s*(?:-{16,}|={16,})(?:\\s*\\*/)?\\s*$"
+            "startRegex": "^\\s*/\\* ={20} (.+) ={20} \\*/\\s*$",
+            "endRegex": "^\\s*/\\* ={20} \\*/\\s*$"
         }
     }
 }
