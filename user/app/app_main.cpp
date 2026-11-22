@@ -102,6 +102,9 @@ extern "C" void app_init(void)
   //    按键任务：200 ms 轮询 key1 / key2（独占它们的 update()）。
   ICBSP_CHECK(xTaskCreate(key_task, "key", 512, NULL, osPriorityNormal, NULL) == pdPASS);
 
+  //    舵机任务：50 Hz 推进 servo1 / servo2（独占它们的 update()，默认中位 135°）。
+  ICBSP_CHECK(xTaskCreate(servo_task, "servo", 256, NULL, osPriorityNormal, NULL) == pdPASS);
+
   //    电机任务：1 kHz 速度环，三台电机唯一的 update() 调用者。
   ICBSP_CHECK(xTaskCreate(motor_task, "motor", 1024, NULL, osPriorityHigh, NULL) == pdPASS);
 

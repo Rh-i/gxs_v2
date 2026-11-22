@@ -8,7 +8,9 @@
  *   CH3 左摇杆上下 → 前进/后退，正 = 前进
  *   CH4 左摇杆左右 → 左右平移，正 = 左移
  *   CH5 C 三挡开关 → 模式：+100 自动（接口暂留）/ 0 停车 / -100 遥控
- *   CH6 旋钮     → 小陀螺模式的自转速度：最左 0 rad/s、最右 SPIN_W_MAX_RAD_S，方向固定逆时针
+ *   CH6 左旋钮   → 舵机1 角度：0 = 中位 135°，正 = 增大，负 = 减小
+ *   CH7 背面左推杆 → 小陀螺模式的自转速度：0 = 不转，正 = 顺时针，负 = 逆时针
+ *   CH8 右旋钮   → 舵机2 角度（映射同 CH6）
  *   CH9/CH10 B/A：A（CH10）+100 = 小陀螺模式，-100 = 普通模式；B 预留
  *
  * 小陀螺模式（A = +100）：车体持续自转，同时 CH3/CH4 平移可用。平移方向以**场地系**为准：
@@ -42,8 +44,13 @@ constexpr float    REMOTE_V_MAX_CM_S = 120.0f; // 摇杆打满 = 120 cm/s
 constexpr float   REMOTE_W_MAX_RAD_S = 12.0f;
 constexpr int16_t STICK_DEADBAND     = 5; // 遥控器语义值 ±100 的 5%，滤掉中位零漂
 
-/** @brief 小陀螺模式的自转速度上限 (rad/s)：CH6 旋钮推到最右就是这个值（约 1.3 圈/s） */
+/** @brief 小陀螺模式的自转速度上限 (rad/s)：左推杆推满就是这个值（约 1.3 圈/s） */
 constexpr float SPIN_W_MAX_RAD_S = 8.0f;
+
+/** @brief 舵机映射：旋钮 0 = 中位，±100 打满 270° 行程 */
+constexpr float SERVO_MID_DEG        = 135.0f; ///< 270° 舵机中位
+constexpr float SERVO_HALF_RANGE_DEG = 135.0f; ///< 半行程：±100 → ±135°
+constexpr int16_t KNOB_DEADBAND      = 3;      ///< 旋钮回中的零漂死区
 
 /** @brief yaw 原始值 → 弧度：int16 满量程 32768 对应 180° */
 constexpr float YAW_RAW_TO_RAD = 3.1415926f / 32768.0f;
@@ -53,10 +60,11 @@ constexpr float YAW_RAW_TO_RAD = 3.1415926f / 32768.0f;
  *
  * @note 现场校验：A 抬起进入小陀螺（CH6 给个中速），推 CH3 前进看轨迹：
  *       - 走直线 → 保持当前值
- *       - 走成圆弧/圆（补偿方向反了，误差翻倍）→ 改成相反值
- * @note 参考值 -1：WT102 的 yaw 随车体逆时针转动而减小，与底盘 ω 逆时针为正的约定相反。
+ *       - 走成圆弧/圆（公转；补偿方向反了，误差翻倍）→ 改成相反值
+ * @note 2026-11-21 本车实测：原值 -1 时推前进会**公转**（车体一边转一边绕圈），
+ *       说明 WT102 的 yaw 随车体逆时针转动而**增大**，补偿方向要取正 → 改成 +1。
  */
-constexpr float SPIN_YAW_SIGN = -1.0f;
+constexpr float SPIN_YAW_SIGN = 1.0f;
 
 
 /** @brief 摇杆 → -1.0~+1.0，中位死区内直接给 0 */
@@ -68,16 +76,38 @@ static float stick(int16_t value)
   return static_cast<float>(value) / 100.0f;
 }
 
-/** @brief CH6 旋钮（-100~+100）→ 自转角速度 0 ~ SPIN_W_MAX_RAD_S（正 = 俯视逆时针） */
-static float spin_rate(int16_t knob)
+/** @brief 左旋钮 / 右旋钮（-100~+100）→ 舵机角度：0 = 中位，正 = 增大，负 = 减小 */
+static float knob_to_servo_deg(int16_t knob)
 {
-  float k = static_cast<float>(knob);
-  if (k < -100.0f)
-    k = -100.0f;
-  else if (k > 100.0f)
-    k = 100.0f;
+  if ((knob <= KNOB_DEADBAND) && (knob >= -KNOB_DEADBAND))
+    return SERVO_MID_DEG;
 
-  return (k + 100.0f) * (SPIN_W_MAX_RAD_S / 200.0f); // 最左 0、最右 SPIN_W_MAX
+  float k = static_cast<float>(knob) / 100.0f;
+  if (k > 1.0f)
+    k = 1.0f;
+  else if (k < -1.0f)
+    k = -1.0f;
+
+  return SERVO_MID_DEG + (k * SERVO_HALF_RANGE_DEG);
+}
+
+/**
+ * @brief 背面左推杆（-100~+100）→ 自转角速度：0 = 不转，正 = 顺时针，负 = 逆时针
+ *
+ * @note 底盘约定 ω 俯视逆时针为正，所以「顺时针」要取负号。
+ */
+static float spin_rate(int16_t slider)
+{
+  if ((slider <= STICK_DEADBAND) && (slider >= -STICK_DEADBAND))
+    return 0.0f;
+
+  float s = static_cast<float>(slider);
+  if (s > 100.0f)
+    s = 100.0f;
+  else if (s < -100.0f)
+    s = -100.0f;
+
+  return -s * (SPIN_W_MAX_RAD_S / 100.0f);
 }
 
 
@@ -113,6 +143,10 @@ extern "C" void remote_task(void *argument)
     const auto  &rc   = r9ds.get_rc();
     const int8_t mode = static_cast<int8_t>(rc.switch_c); // +1 自动 / 0 停车 / -1 遥控
 
+    // 两个旋钮 → 两个舵机：与行驶模式无关，链路在线就一直跟手（PWM 由 servo_task 推进）
+    servo1.set_angle(knob_to_servo_deg(rc.knob_left));
+    servo2.set_angle(knob_to_servo_deg(rc.knob_right));
+
     if (mode >= 0)
     {
       // 自动（+1）与停车（0）都刹车；小陀螺状态要清，回到遥控挡时重新取原点
@@ -143,7 +177,7 @@ extern "C" void remote_task(void *argument)
         spin_mode = true;
       }
 
-      const float w = spin_rate(rc.knob_left);
+      const float w = spin_rate(rc.slider_left); // 背面左推杆：0 不转 / 正顺时针 / 负逆时针
 
       // 把「场地系」摇杆向量反旋回车体系：v_body = R(-Δyaw) · v_field
       if (wt102.is_online())

@@ -67,20 +67,20 @@
 // CubeMX 生成的句柄头文件：**按实际用到的外设增删**。
 // <ICBSP-GEN includes>
 // 由 tools/integrate.py 按 .ioc 与接入选择生成：要改就改选择后重新运行；手改本区会被检测到、拒绝覆盖
-#include "bsp/bsp_series.hpp" // IWYU pragma: keep
-#include "main.h"         // IWYU pragma: keep（GPIO 标签宏）
-#include "tim.h"
-#include "usart.h"
-#include "bsp/bsp_dwt.hpp"
+#include "bsp/bsp_dwt.hpp" // IWYU pragma: keep
 #include "bsp/bsp_encoder.hpp"
 #include "bsp/bsp_gpio.hpp"
 #include "bsp/bsp_key.hpp"
 #include "bsp/bsp_pwm.hpp"
+#include "bsp/bsp_series.hpp" // IWYU pragma: keep
 #include "bsp/bsp_uart.hpp"
-#include "device/motor/device_motor.hpp"
 #include "device/actuator/device_servo.hpp"
-#include "device/sensor/device_wt102.hpp"
+#include "device/motor/device_motor.hpp"
 #include "device/remote/device_r9ds.hpp"
+#include "device/sensor/device_wt102.hpp"
+#include "main.h" // IWYU pragma: keep（GPIO 标签宏）
+#include "tim.h"
+#include "usart.h"
 // </ICBSP-GEN includes 7b269904>
 
 /** @brief 板级初始化：各实例 init()，实现在 board_cfg.cpp */

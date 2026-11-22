@@ -52,6 +52,9 @@ constexpr float MOTOR_WHEEL_DIAMETER_CM  = 6.5f;
 
 /** 速度环 PID：取自 example（500 线 / 1:32 / 7 cm 那台），可直接当起点 */
 const PID::Config MOTOR_PID(18.0f, 0.016f, 0.0f, 1000.0f);
+
+/** 舵机默认角度：270° 舵机的中位（对应 1500 µs） */
+constexpr float SERVO_MID_DEG = 135.0f;
 } // namespace
 
 /// 电机1：PWM TIM2_CH3/CH4 + 编码器 TIM3
@@ -130,6 +133,10 @@ void board_init(void)
   ICBSP_CHECK(motor3.init() == Status::OK); // TIM8 + TIM4
   ICBSP_CHECK(servo1.init() == Status::OK); // TIM5_CH1
   ICBSP_CHECK(servo2.init() == Status::OK); // TIM5_CH2
+
+  // 舵机上电默认中位：这里只登记目标，真正的 PWM 由 servo_task 的周期 update() 写入
+  servo1.set_angle(SERVO_MID_DEG);
+  servo2.set_angle(SERVO_MID_DEG);
   ICBSP_CHECK(wt102.init() == Status::OK);  // USART2
   ICBSP_CHECK(r9ds.init() == Status::OK);   // UART5
 }

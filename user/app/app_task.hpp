@@ -50,6 +50,14 @@ extern "C"
   void key_task(void *argument);
 
   /**
+   * @brief 舵机任务：50 Hz 推进 servo1 / servo2 的 update()
+   * @param argument 任务参数（未使用，NULL）
+   * @note `DeviceServo::update()` 是唯一 PWM 写入者；默认中位由 board_init() 里的 set_angle() 给出。
+   *       本任务独占两个舵机的 update()。
+   */
+  void servo_task(void *argument);
+
+  /**
    * @brief 电机速度环任务：默认 1 ms（1 kHz）周期，跑 motor1/2/3 的 update()
    * @param argument 任务参数（未使用，NULL）
    * @note 控制周期改 `motor_task.cpp` 里的 MOTOR_TASK_PERIOD_MS；dt 由 bsp_dwt 实测，
