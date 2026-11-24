@@ -95,25 +95,25 @@ void board_init(void);
 // 需要释放资源时显式调 `deinit()`，不要写析构函数。
 
 // <ICBSP-GEN peripherals>
-/// USART1：调试打印串口（PB6/PB7，115200 8N1，DMA 收发）
-inline ICBSP_DMA_BUFFER(bsp_uart1) BspUartT<uart_mode::dma, 128, 128> bsp_uart1({.huart = &huart1, .mode = UartDir::TxRx, .baudrate = 115200U});
+/// USART1：**通信串口**（PB6/PB7，921600 8N1，DMA 收发，缓冲加大到 512）
+inline ICBSP_DMA_BUFFER(bsp_uart1) BspUartT<uart_mode::dma, 512, 512> bsp_uart1({.huart = &huart1, .mode = UartDir::TxRx, .baudrate = 921600U});
 /// USART2：WT102 陀螺仪（PA2/PA3，230400 8N1，DMA 只收）
 inline ICBSP_DMA_BUFFER(bsp_uart2) BspUartT<uart_mode::dma, 256, 128> bsp_uart2({.huart = &huart2, .mode = UartDir::RxOnly, .baudrate = 230400U});
 /// UART5：R9DS 遥控（PB5/PC12，SBUS：100000、8 数据位 + 偶校验 + 2 停止位，DMA 只收）
 inline ICBSP_DMA_BUFFER(bsp_uart5) BspUartT<uart_mode::dma, 256, 128> bsp_uart5({.huart = &huart5, .mode = UartDir::RxOnly, .baudrate = 100000U});
-/// UART8：预留串口（PE0/PE1，115200 8N1，DMA 收发）
-inline ICBSP_DMA_BUFFER(bsp_uart8) BspUartT<uart_mode::dma, 128, 128> bsp_uart8({.huart = &huart8, .mode = UartDir::TxRx, .baudrate = 115200U});
+/// UART8：**调试打印串口**（PE0/PE1，921600 8N1，DMA 收发；也承载 VOFA JustFloat 波形）
+inline ICBSP_DMA_BUFFER(bsp_uart8) BspUartT<uart_mode::dma, 128, 128> bsp_uart8({.huart = &huart8, .mode = UartDir::TxRx, .baudrate = 921600U});
 /// USART10：**上下位机通讯串口**（PE2/PE3，921600 8N1，DMA 收发，缓冲加大到 512）
 inline ICBSP_DMA_BUFFER(bsp_uart10) BspUartT<uart_mode::dma, 512, 512> bsp_uart10({.huart = &huart10, .mode = UartDir::TxRx, .baudrate = 921600U});
-/// TIM2_CH3 / CH4：电机1 H 桥（PB10/PB11，20 kHz）
-inline BspPwm bsp_pwm_tim2_ch3({.htim = &htim2, .channel = TIM_CHANNEL_3, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 13749U});
-inline BspPwm bsp_pwm_tim2_ch4({.htim = &htim2, .channel = TIM_CHANNEL_4, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 13749U});
-/// TIM12_CH1 / CH2：电机2 H 桥（PB14/PB15，20 kHz）
-inline BspPwm bsp_pwm_tim12_ch1({.htim = &htim12, .channel = TIM_CHANNEL_1, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 13749U});
-inline BspPwm bsp_pwm_tim12_ch2({.htim = &htim12, .channel = TIM_CHANNEL_2, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 13749U});
-/// TIM8_CH1 / CH2：电机3 H 桥（PC6/PC7，20 kHz）
-inline BspPwm bsp_pwm_tim8_ch1({.htim = &htim8, .channel = TIM_CHANNEL_1, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 13749U});
-inline BspPwm bsp_pwm_tim8_ch2({.htim = &htim8, .channel = TIM_CHANNEL_2, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 13749U});
+/// TIM2_CH3 / CH4：电机1 H 桥（PB10/PB11，10 kHz）
+inline BspPwm bsp_pwm_tim2_ch3({.htim = &htim2, .channel = TIM_CHANNEL_3, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
+inline BspPwm bsp_pwm_tim2_ch4({.htim = &htim2, .channel = TIM_CHANNEL_4, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
+/// TIM12_CH1 / CH2：电机2 H 桥（PB14/PB15，10 kHz）
+inline BspPwm bsp_pwm_tim12_ch1({.htim = &htim12, .channel = TIM_CHANNEL_1, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
+inline BspPwm bsp_pwm_tim12_ch2({.htim = &htim12, .channel = TIM_CHANNEL_2, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
+/// TIM8_CH1 / CH2：电机3 H 桥（PC6/PC7，10 kHz）
+inline BspPwm bsp_pwm_tim8_ch1({.htim = &htim8, .channel = TIM_CHANNEL_1, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
+inline BspPwm bsp_pwm_tim8_ch2({.htim = &htim8, .channel = TIM_CHANNEL_2, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
 /// TIM5_CH1 / CH2：舵机（PA0/PA1，50 Hz / 20 ms，1 计数 = 1 µs）
 inline BspPwm bsp_pwm_tim5_ch1({.htim = &htim5, .channel = TIM_CHANNEL_1, .timer_clk_hz = 275000000UL, .prescaler = 274U, .period = 19999U});
 inline BspPwm bsp_pwm_tim5_ch2({.htim = &htim5, .channel = TIM_CHANNEL_2, .timer_clk_hz = 275000000UL, .prescaler = 274U, .period = 19999U});
@@ -130,9 +130,9 @@ inline BspKey key2({.port = KEY2_GPIO_Port, .pin = KEY2_Pin, .active_low = true,
 /// LED1：PC13，GPIO 输出（CubeMX 里初始电平 Reset；板上低电平点亮时也就对应“亮”）
 inline BspGpio led1({.port = LED1_GPIO_Port, .pin = LED1_Pin});
 
-/// 调试打印串口：USART1（PB6/PB7）
+/// 调试打印串口：UART8（PE0/PE1）
 #define ICBSP_UART_PRINT_ENABLE 1
-#define print_uart(...) bsp_uart1.printf(__VA_ARGS__)
+#define print_uart(...) bsp_uart8.printf(__VA_ARGS__)
 // </ICBSP-GEN peripherals 5129401a>
 
 

@@ -7,7 +7,8 @@
  *   CH1 右摇杆上下 → 自旋（仅普通模式；小陀螺模式下忽略），正 = 左旋（俯视逆时针）
  *   CH3 左摇杆上下 → 前进/后退，正 = 前进
  *   CH4 左摇杆左右 → 左右平移，正 = 左移
- *   CH5 C 三挡开关 → 模式：+100 自动（接口暂留）/ 0 停车 / -100 遥控
+ *   CH5 C 三挡开关 → **控制源仲裁**：+100 上位机 / 0 强制停车 / -100 遥控（遥控器优先）
+ *   — 遥控器**离线**（关掉/拔线）时控制权自动交给上位机，不再刹车锁死。
  *   CH6 左旋钮   → 舵机1 角度：0 = 中位 135°，正 = 增大，负 = 减小
  *   CH7 背面左推杆 → 小陀螺模式的自转速度：0 = 不转，正 = 顺时针，负 = 逆时针
  *   CH8 右旋钮   → 舵机2 角度（映射同 CH6）
@@ -28,7 +29,7 @@
 #include "app_task.hpp"
 
 #include "board_cfg.hpp"             // r9ds、wt102
-#include "module_cfg.hpp"            // chassis
+#include "module_cfg.hpp"            // chassis / host / ControlSource
 #include "service/system/system.hpp" // sys_state
 
 #include "FreeRTOS.h" // IWYU pragma: keep
@@ -119,48 +120,64 @@ extern "C" void remote_task(void *argument)
   TickType_t wake_time = xTaskGetTickCount();
 
   bool    spin_mode = false; ///< 上一拍的 A 开关状态（只用来抓「刚进入」那一拍）
-  bool    braking   = false; ///< 上一拍是否处于「刹车」状态：只在切换时真正调用 chassis.stop()
   int16_t yaw_entry = 0;     ///< 进入小陀螺那一刻的 yaw，场地系的 0°
+
+  /** 上一拍的控制源：只在「切换」时刹一次车，避免 100 Hz 重复 stop() */
+  ControlSource prev_src = ControlSource::RC;
 
   for (;;)
   {
     r9ds.update(); // 本任务是该串口唯一的接收消费者
 
-    // 链路不可用（拔线 / 遥控器关机 / 连续丢帧）直接刹车，不接受残余摇杆值
+    // 电机测试进行中（motor_test_wave ≠ 0）：本任务不碰底盘，否则这里的 chassis.stop()
+    // 会以 100 Hz 把 motor_monitor_task 写进去的测试目标冲掉。
+    if (motor_test_wave != 0U)
+    {
+      spin_mode = false;
+      vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(REMOTE_PERIOD_MS));
+      continue;
+    }
+
+    // 遥控器关掉 / 拔线 / 连续丢帧：**控制权交给上位机**（上位机不发指令时车就保持停着）
     if (!r9ds.is_online())
     {
-      // 只在“刚进入刹车”的那一拍调 stop()：stop() 会短路制动并清积分，100 Hz 重复调用没有意义
-      if (!braking)
+      if (prev_src != ControlSource::HOST)
       {
-        chassis.stop();
-        braking = true;
+        chassis.stop(); // 丢掉遥控器最后给的速度，不会带着残余速度冲出去
+        prev_src = ControlSource::HOST;
       }
+      host.set_control_source(ControlSource::HOST);
       spin_mode = false;
       vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(REMOTE_PERIOD_MS));
       continue;
     }
 
     const auto  &rc   = r9ds.get_rc();
-    const int8_t mode = static_cast<int8_t>(rc.switch_c); // +1 自动 / 0 停车 / -1 遥控
+    const int8_t mode = static_cast<int8_t>(rc.switch_c); // -1 遥控 / 0 强制停车 / +1 上位机
 
-    // 两个旋钮 → 两个舵机：与行驶模式无关，链路在线就一直跟手（PWM 由 servo_task 推进）
-    servo1.set_angle(knob_to_servo_deg(rc.knob_left));
-    servo2.set_angle(knob_to_servo_deg(rc.knob_right));
+    // 控制源仲裁：遥控器永远优先——CH5 直接指定底盘听谁（状态存于 host）
+    const ControlSource src = (mode > 0) ? ControlSource::HOST
+                                         : ((mode < 0) ? ControlSource::RC : ControlSource::STOP);
+    host.set_control_source(src);
 
-    if (mode >= 0)
+    if (src != prev_src)
     {
-      // 自动（+1）与停车（0）都刹车；小陀螺状态要清，回到遥控挡时重新取原点
-      if (!braking)
-      {
-        chassis.stop();
-        braking = true;
-      }
+      chassis.stop(); // 切换控制源：先停一次，不把上一源的速度带进新源
+      prev_src = src;
+    }
+
+    if (src != ControlSource::RC)
+    {
+      // 上位机挡 / 停车挡：舵机也不由旋钮控（上位机挡下归 host_task）
       spin_mode = false;
       vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(REMOTE_PERIOD_MS));
       continue;
     }
 
-    braking = false; // 进入遥控挡：下面的 drive() 会接管三个电机的目标
+    // 遥控挡：两个旋钮控舵机（PWM 由 servo_task 推进）
+    servo1.set_angle(knob_to_servo_deg(rc.knob_left));
+    servo2.set_angle(knob_to_servo_deg(rc.knob_right));
+
     // 遥控挡：摇杆 → 场地系平移（底盘约定 v_x 右正、v_y 前正）
     const float fwd  = stick(rc.left_vertical);   // +1 前进
     const float left = stick(rc.left_horizontal); // +1 左移
@@ -173,7 +190,7 @@ extern "C" void remote_task(void *argument)
       /* ---------- 小陀螺模式：自转 + 场地系平移 ---------- */
       if (!spin_mode)
       {
-        yaw_entry = g_imu_yaw_raw; // 上升沿：此刻车头方向 = 场地系 0°
+        yaw_entry = wt102.get_z_newest().yaw; // 上升沿：此刻车头方向 = 场地系 0°
         spin_mode = true;
       }
 
@@ -182,7 +199,7 @@ extern "C" void remote_task(void *argument)
       // 把「场地系」摇杆向量反旋回车体系：v_body = R(-Δyaw) · v_field
       if (wt102.is_online())
       {
-        const int16_t yaw_now = g_imu_yaw_raw; // 快照：imu_task 每 2 ms 刷新，这里不直接读 wt102
+        const int16_t yaw_now = wt102.get_z_newest().yaw; // 只取单个 int16，读上一帧也够用
         const int16_t dyaw    = static_cast<int16_t>(yaw_now - yaw_entry);
         const float   a       = static_cast<float>(dyaw) * YAW_RAW_TO_RAD * SPIN_YAW_SIGN;
         const float   c    = cosf(a);

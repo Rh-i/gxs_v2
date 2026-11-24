@@ -50,8 +50,8 @@ constexpr float MOTOR_ENCODER_MULTIPLIER = 4.0f;
 constexpr float MOTOR_GEAR_RATIO         = 30.0f;
 constexpr float MOTOR_WHEEL_DIAMETER_CM  = 6.5f;
 
-/** 速度环 PID：取自 example（500 线 / 1:32 / 7 cm 那台），可直接当起点 */
-const PID::Config MOTOR_PID(18.0f, 0.016f, 0.0f, 1000.0f);
+// 速度环 PID 三台各写各的（见下面 motor1 / motor2 / motor3 的 .pid），调试时只改自己那台，互不影响。
+// 参数顺序：kp, ki, kd, out_max（起点值 18 / 0.016 / 0 / 1000）
 
 /** 舵机默认角度：270° 舵机的中位（对应 1500 µs） */
 constexpr float SERVO_MID_DEG = 135.0f;
@@ -65,17 +65,19 @@ DeviceMotor motor1({.pwm_a              = &bsp_pwm_tim2_ch3,
                     .encoder_multiplier = MOTOR_ENCODER_MULTIPLIER,
                     .gear_ratio         = MOTOR_GEAR_RATIO,
                     .wheel_diameter_cm  = MOTOR_WHEEL_DIAMETER_CM,
-                    .pid                = MOTOR_PID});
+                    .speed_lpf_hz       = 100.0f, // 速度反馈低通 100 Hz
+                    .pid                = PID::Config(25.0f, 0.05f, 0.0f, 100.0f)});
 
 /// 电机2：PWM TIM12_CH1/CH2 + 编码器 TIM1
 DeviceMotor motor2({.pwm_a              = &bsp_pwm_tim12_ch1,
                     .pwm_b              = &bsp_pwm_tim12_ch2,
                     .encoder            = &bsp_encoder_tim1,
                     .encoder_lines      = MOTOR_ENCODER_LINES,
-                    .encoder_multiplier = MOTOR_ENCODER_MULTIPLIER,
+                    .encoder_multiplier = MOTOR_ENCODER_MULTIPLIER, 
                     .gear_ratio         = MOTOR_GEAR_RATIO,
                     .wheel_diameter_cm  = MOTOR_WHEEL_DIAMETER_CM,
-                    .pid                = MOTOR_PID});
+                    .speed_lpf_hz       = 100.0f, // 速度反馈低通 100 Hz
+                    .pid                = PID::Config(20.0f, 0.04f, 0.0f, 100.0f)});
 
 /// 电机3：PWM TIM8_CH1/CH2 + 编码器 TIM4
 DeviceMotor motor3({.pwm_a              = &bsp_pwm_tim8_ch1,
@@ -85,7 +87,8 @@ DeviceMotor motor3({.pwm_a              = &bsp_pwm_tim8_ch1,
                     .encoder_multiplier = MOTOR_ENCODER_MULTIPLIER,
                     .gear_ratio         = MOTOR_GEAR_RATIO,
                     .wheel_diameter_cm  = MOTOR_WHEEL_DIAMETER_CM,
-                    .pid                = MOTOR_PID});
+                    .speed_lpf_hz       = 100.0f, // 速度反馈低通 100 Hz
+                    .pid                = PID::Config(23.0f, 0.05f, 0.0f, 100.0f)});
 
 /// 舵机1：TIM5_CH1，270° 舵机，500~2500 µs 对应 0~270°
 DeviceServo servo1({.pwm = &bsp_pwm_tim5_ch1, .pulse_min_us = 500.0f, .pulse_max_us = 2500.0f, .range_deg = 270.0f});
@@ -109,11 +112,11 @@ void board_init(void)
 
   // ② 总线与外设：失败会停在对应行号，fault_record 里能看到是哪一路。
   // <ICBSP-GEN init>
-  ICBSP_CHECK(bsp_uart1.init() == Status::OK);        // USART1  调试打印 115200
+  ICBSP_CHECK(bsp_uart1.init() == Status::OK);        // USART1  通信 921600
   ICBSP_CHECK(bsp_uart2.init() == Status::OK);        // USART2  WT102 230400
   ICBSP_CHECK(bsp_uart5.init() == Status::OK);        // UART5   R9DS SBUS 100000 8E2
-  ICBSP_CHECK(bsp_uart8.init() == Status::OK);        // UART8   预留
-  ICBSP_CHECK(bsp_uart10.init() == Status::OK);       // USART10 预留
+  ICBSP_CHECK(bsp_uart8.init() == Status::OK);        // UART8   调试打印 + VOFA 921600
+  ICBSP_CHECK(bsp_uart10.init() == Status::OK);       // USART10 上下位机通信 921600
   ICBSP_CHECK(bsp_pwm_tim2_ch3.init() == Status::OK); // 电机1 H 桥
   ICBSP_CHECK(bsp_pwm_tim2_ch4.init() == Status::OK);
   ICBSP_CHECK(bsp_pwm_tim12_ch1.init() == Status::OK); // 电机2 H 桥
@@ -124,8 +127,10 @@ void board_init(void)
   ICBSP_CHECK(bsp_pwm_tim5_ch2.init() == Status::OK);
   ICBSP_CHECK(bsp_encoder_tim3.init() == Status::OK); // 电机1 编码器
   ICBSP_CHECK(bsp_encoder_tim1.init() == Status::OK); // 电机2 编码器
-  ICBSP_CHECK(bsp_encoder_tim4.init() == Status::OK); // 电机3 编码器  ICBSP_CHECK(key1.init() == Status::OK);               // PE4 按键（上拉，按下为低）
-  ICBSP_CHECK(key2.init() == Status::OK);               // PE5 按键  // </ICBSP-GEN init dc07c491>
+  ICBSP_CHECK(bsp_encoder_tim4.init() == Status::OK); // 电机3 编码器
+  ICBSP_CHECK(key1.init() == Status::OK);             // PE4 按键（上拉，按下为低）
+  ICBSP_CHECK(key2.init() == Status::OK);             // PE5 按键
+  // </ICBSP-GEN init dc07c491>
 
   // ③ 设备：必须在自己用的外设 init() 之后（编码器要先跑起来，否则闭环会一路积分到限幅）。
   ICBSP_CHECK(motor1.init() == Status::OK); // TIM2 + TIM3
@@ -137,8 +142,8 @@ void board_init(void)
   // 舵机上电默认中位：这里只登记目标，真正的 PWM 由 servo_task 的周期 update() 写入
   servo1.set_angle(SERVO_MID_DEG);
   servo2.set_angle(SERVO_MID_DEG);
-  ICBSP_CHECK(wt102.init() == Status::OK);  // USART2
-  ICBSP_CHECK(r9ds.init() == Status::OK);   // UART5
+  ICBSP_CHECK(wt102.init() == Status::OK); // USART2
+  ICBSP_CHECK(r9ds.init() == Status::OK);  // UART5
 }
 
 /* ==================== */

@@ -14,8 +14,11 @@
 #ifndef __MODULE_CFG_HPP__
 #define __MODULE_CFG_HPP__
 
+#include "host.hpp"
 #include "omni3_chassis.hpp"
 
+
+/* ==================== 初始化 ==================== */
 
 /**
  * @brief Module 层统一初始化
@@ -25,10 +28,13 @@
  */
 void module_init(void);
 
+/* ==================== */
+
 
 /* ==================== 全局声明 ==================== */
 
 extern Omni3Chassis chassis; ///< 三全向轮底盘（M1 右前 / M2 左前 / M3 正后）
+extern Host         host;    ///< 上位机协议执行器（定义见 module_cfg.cpp）
 
 /* ==================== */
 #endif // __MODULE_CFG_HPP__

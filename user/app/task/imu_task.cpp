@@ -25,9 +25,6 @@
 /** @brief 读取周期 (ms)：500 Hz 的数据每拍只会攒 1~2 帧，不会积压 */
 constexpr uint32_t IMU_TASK_PERIOD_MS = 2U;
 
-/** @brief 最新 yaw（int16 原始值），供 remote_task 无锁读取；定义见 app_task.hpp 声明 */
-volatile int16_t g_imu_yaw_raw = 0;
-
 extern "C" void imu_task(void *argument)
 {
   (void)argument;
@@ -41,9 +38,6 @@ extern "C" void imu_task(void *argument)
   {
     // 本任务是该串口唯一的接收消费者；结果在 wt102.get_z_newest() / z_previous()
     wt102.update();
-
-    // 发布快照：别的任务不直接读 wt102，避免与这里的 update() 并发
-    g_imu_yaw_raw = wt102.get_z_newest().yaw;
 
     vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(IMU_TASK_PERIOD_MS));
   }

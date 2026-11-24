@@ -1,0 +1,200 @@
+/**
+ * @file host.hpp
+ * @author Rh
+ * @brief 上位机协议执行器 —— 把"收帧 / 执行指令 / 仲裁 / 上报"全部收进一个类
+ * @version 0.1
+ * @date 2026-11-22
+ *
+ * @details
+ *
+ * 【分层】
+ *   `host_protocol.*`  纯编解码（帧格式、累加和、解析器）
+ *   `host.hpp/.cpp`    本类：协议执行器 —— 独占 `bsp_uart10`，把帧变成动作和应答
+ *   `user/app/task/host_task.cpp`  只是个壳：`host.poll()` 里是阻塞收帧的主循环
+ *
+ * 【本类管的三件事】
+ *   1. 指令：CMD_VEL / CMD_VEL_TIME / CMD_MOVE / CMD_SERVO / ESTOP
+ *   2. 仲裁：`ControlSource`（遥控器 CH5 写、本类读）
+ *   3. 场地信息：出生点 1~4 / 安全区 1~2（按键改，改了才推送给上位机）
+ *
+ * 【生效规则】
+ *   - 只有 `ControlSource::HOST` 时速度类指令才执行，否则回 `RES_REJECTED`
+ *   - 场地信息：**按键改了就发一次**（`_field_dirty`），其余时候只在 `PING` 查询时回复
+ *   - 没有周期心跳、没有 IMU/MOTORS 周期上报
+ */
+
+#ifndef __HOST_HPP__
+#define __HOST_HPP__
+
+#include "host_protocol.hpp" // 帧格式与消息类型
+
+#include <stdint.h>
+
+
+/**
+ * @brief 底盘听谁的
+ *
+ * @note 优先级：**遥控器最大**——CH5 三挡：`HOST` 上位机 / `STOP` 强制停车 / `RC` 遥控；
+ *       遥控器离线时由 `remote_task` 切到 `HOST`（上位机接管）。
+ */
+enum class ControlSource : uint8_t
+{
+  RC   = 0U, ///< 摇杆直接控底盘
+  HOST = 1U, ///< 上位机指令控底盘
+  STOP = 2U, ///< 强制停车（两边都不接受指令）
+};
+
+
+class Host
+{
+public:
+  Host() = default;
+
+  /* ==================== 对外接口（其他任务用） ==================== */
+
+  /** @brief 设置控制源（remote_task 按 CH5 / 离线状态每拍写） */
+  void set_control_source(ControlSource src);
+
+  /** @brief 读当前控制源 */
+  ControlSource control_source() const;
+
+  /** @brief 出生点 1 → 2 → 3 → 4 → 1（按键短按调用）；只改本地值，不发送 */
+  void next_spawn();
+
+  /** @brief 安全区 1 ↔ 2（按键短按调用）；只改本地值，不发送 */
+  void toggle_zone();
+
+  /** @brief 把当前出生点/安全区推送给上位机（按键长按调用，下一轮 poll 发送） */
+  void push_field();
+
+  /** @brief 当前出生点 1~4 */
+  uint8_t spawn_id() const;
+
+  /** @brief 当前安全区 1 / 2 */
+  uint8_t safe_zone() const;
+
+  /**
+   * @brief 主循环：阻塞收帧 → 执行 → 仲裁 → 推进运动状态机 → 变化时补发
+   * @note 永不返回；在 `host_task` 里调用
+   */
+  void poll();
+
+  /* ==================== */
+
+private:
+  /* ==================== 运动任务（CMD_MOVE 三段式） ==================== */
+
+  /** @brief 运动任务的阶段 */
+  enum class MovePhase : uint8_t
+  {
+    IDLE = 0, ///< 没有运动任务
+    TURN1,    ///< ① 原地转到"运动方向"
+    STRAIGHT, ///< ② 定速直行"距离 / 速度"那么久
+    TURN2,    ///< ③ 原地转到目标朝向
+  };
+
+  /** @brief 当前运动任务的全部参数 */
+  struct MotionJob
+  {
+    MovePhase phase            = MovePhase::IDLE;
+    float     heading1         = 0.0f; ///< 阶段 ① 的目标航向 (rad)
+    float     heading2         = 0.0f; ///< 阶段 ③ 的目标航向 (rad)
+    float     vx_body          = 0.0f; ///< 直行时的车体 x 速度 (cm/s)
+    float     vy_body          = 0.0f; ///< 直行时的车体 y 速度 (cm/s)
+    uint32_t  straight_dur_ms  = 0U;   ///< 直行段时长
+    uint32_t  straight_stop_ms = 0U;   ///< 直行结束时刻 (ms)
+    uint32_t  turn_start_ms    = 0U;   ///< 当前转向段开始时刻 (ms)
+    uint8_t   cmd_type         = 0U;   ///< 原始指令类型（回 MOVE_DONE 用）
+    uint8_t   cmd_seq          = 0U;   ///< 原始指令序号
+  };
+
+  /** @brief 定时速度指令（CMD_VEL_TIME） */
+  struct TimedDrive
+  {
+    bool     active  = false;
+    uint32_t stop_ms = 0U;
+    uint8_t  cmd_seq = 0U;
+  };
+
+  /* ==================== */
+
+
+  /* ==================== 收 ==================== */
+
+  /** @brief 阻塞等串口数据（最多 HOST_WAIT_MS），把积压的字节全部解析掉 */
+  void _drain_rx();
+
+  /** @brief 按 TYPE 分派一帧 */
+  void _handle(const host_proto::Frame &f);
+
+  void _on_cmd_vel(const host_proto::Frame &f);
+  void _on_cmd_vel_time(const host_proto::Frame &f);
+  void _on_cmd_move(const host_proto::Frame &f);
+  void _on_cmd_servo(const host_proto::Frame &f);
+  void _on_ping();
+  void _on_estop(const host_proto::Frame &f);
+
+  /* ==================== */
+
+
+  /* ==================== 发 ==================== */
+
+  void _send_frame(uint8_t type, const uint8_t *payload, uint8_t len);
+  void _send_ack(uint8_t acked_type, uint8_t acked_seq, uint8_t result);
+  void _send_hello();
+  void _send_pong();
+  void _send_state();
+  void _send_field();
+  void _send_event(uint8_t code, uint8_t data);
+
+  /** @brief 结束当前运动任务：回 MOVE_DONE（如有任务）+ 停车 */
+  void _finish_job(uint8_t result);
+
+  /* ==================== */
+
+
+  /* ==================== 运动 ==================== */
+
+  void _start_move_job(const host_proto::Frame &f);
+  void _motion_step();
+  bool _turn_step(float target_rad, uint32_t now_ms);
+
+  /* ==================== */
+
+
+  /* ==================== 周期事务 ==================== */
+
+  /** @brief 控制源不是上位机 → 中止运动任务并停车 */
+  void _arbitrate();
+
+  /** @brief CMD_VEL_TIME 到点 → 停车 + 回 MOVE_DONE */
+  void _expire_timed();
+
+  /** @brief 控制源 / 场地信息变化时补发对应对帧（不是心跳） */
+  void _publish_changes();
+
+  /* ==================== */
+
+
+  /* ==================== 状态 ==================== */
+
+  host_proto::Parser _parser;        ///< 收帧解析器（跨轮保留半帧）
+  uint8_t            _tx_seq = 0U;   ///< 下行帧序号
+  MotionJob          _job;           ///< 当前运动任务
+  TimedDrive         _timed;         ///< 当前定时速度任务
+
+  volatile ControlSource _source = ControlSource::RC; ///< 遥控器 CH5 写、本类读
+  volatile uint8_t       _spawn  = 1U;                ///< 出生点（按键写）
+  volatile uint8_t       _zone   = 1U;                ///< 安全区（按键写）
+  volatile bool          _field_dirty = false;        ///< 按键改过 → 下一轮推送一次
+
+  ControlSource _last_src = ControlSource::RC; ///< 用于检测控制源变化
+
+  /* ==================== */
+};
+
+
+/** @brief 全局唯一实例（在 module_cfg.cpp 里定义） */
+extern Host host;
+
+#endif // __HOST_HPP__

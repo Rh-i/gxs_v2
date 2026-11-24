@@ -30,12 +30,12 @@
 
 #include "app_task.hpp"
 #include "board_cfg.hpp"
-#include "module_cfg.hpp"                 // chassis、module_init()
+#include "module_cfg.hpp"                  // chassis、module_init()
 #include "service/system/fault_record.hpp" // ICBSP_CHECK
 #include "service/system/system.hpp"
 
-#include "FreeRTOS.h" // IWYU pragma: keep
 #include "cmsis_os2.h" // IWYU pragma: keep（osPriorityNormal / osPriorityHigh）
+#include "FreeRTOS.h"  // IWYU pragma: keep
 #include "task.h"
 
 
@@ -105,6 +105,9 @@ extern "C" void app_init(void)
   //    舵机任务：50 Hz 推进 servo1 / servo2（独占它们的 update()，默认中位 135°）。
   ICBSP_CHECK(xTaskCreate(servo_task, "servo", 256, NULL, osPriorityNormal, NULL) == pdPASS);
 
+  //    上下位机任务：100 Hz 收发协议帧（独占 bsp_uart10，921600）。
+  ICBSP_CHECK(xTaskCreate(host_task, "host", 1024, NULL, osPriorityNormal, NULL) == pdPASS);
+
   //    电机任务：1 kHz 速度环，三台电机唯一的 update() 调用者。
   ICBSP_CHECK(xTaskCreate(motor_task, "motor", 1024, NULL, osPriorityHigh, NULL) == pdPASS);
 
@@ -113,6 +116,11 @@ extern "C" void app_init(void)
 
   //    陀螺仪任务：500 Hz 读 WT102（独占 wt102.update()），小陀螺模式反旋用。
   ICBSP_CHECK(xTaskCreate(imu_task, "imu", 1024, NULL, osPriorityHigh, NULL) == pdPASS);
+
+  //    电机监控任务：1 kHz 把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat
+  //    发给 VOFA+（USART1，921600）。观察对象：motor_monitor_index（0/1/2 → motor1/2/3）
+  //    测试波形：motor_test_wave（0 = 关，1 = 方波，2 = 正弦，±50 cm/s、2 s）
+  ICBSP_CHECK(xTaskCreate(motor_monitor_task, "mon", 512, NULL, osPriorityNormal, NULL) == pdPASS);
 
   // 5. 放行：置运行位，放行所有在 wait_running() 上等待的任务。
   //    初始化阶段有失败记录（例如 CAN 节点注册失败、外设 init() 失败）时，

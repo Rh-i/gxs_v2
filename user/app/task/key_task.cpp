@@ -13,8 +13,9 @@
 
 #include "app_task.hpp"
 
-#include "board_cfg.hpp"             // key1 / key2 / print_uart(bsp_uart1)
+#include "board_cfg.hpp"             // key1 / key2 / print_uart(bsp_uart8)
 #include "bsp/bsp_key.hpp"           // BspKey::Event
+#include "module_cfg.hpp"            // 出生点 / 安全区
 #include "service/system/system.hpp" // sys_state
 
 #include "FreeRTOS.h" // IWYU pragma: keep
@@ -77,12 +78,42 @@ extern "C" void key_task(void *argument)
     {
       key1_events = key1_events + 1U; // volatile 上不用 ++（C++20 起弃用）
       report("KEY1", e1);
+
+      // KEY1 短按：出生点 1 → 2 → 3 → 4 → 1（只改本地值，不发）
+      if (e1 == BspKey::Event::SHORT)
+      {
+        host.next_spawn();
+        (void)print_uart("[field] spawn=%u\r\n", static_cast<unsigned>(host.spawn_id()));
+      }
+
+      // KEY1 长按：把当前出生点/安全区推送给上位机
+      if (e1 == BspKey::Event::LONG)
+      {
+        host.push_field();
+        (void)print_uart("[field] push spawn=%u zone=%u\r\n", static_cast<unsigned>(host.spawn_id()),
+                         static_cast<unsigned>(host.safe_zone()));
+      }
     }
 
     if (e2 != BspKey::Event::NONE)
     {
       key2_events = key2_events + 1U;
       report("KEY2", e2);
+
+      // KEY2 短按：安全区 1 ↔ 2（只改本地值，不发）
+      if (e2 == BspKey::Event::SHORT)
+      {
+        host.toggle_zone();
+        (void)print_uart("[field] safe_zone=%u\r\n", static_cast<unsigned>(host.safe_zone()));
+      }
+
+      // KEY2 长按：推送给上位机
+      if (e2 == BspKey::Event::LONG)
+      {
+        host.push_field();
+        (void)print_uart("[field] push spawn=%u zone=%u\r\n", static_cast<unsigned>(host.spawn_id()),
+                         static_cast<unsigned>(host.safe_zone()));
+      }
     }
 
     vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(KEY_TASK_PERIOD_MS));

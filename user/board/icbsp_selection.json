@@ -30,7 +30,7 @@
         "dir": "TxRx",
         "rx_size": 128,
         "tx_size": 128,
-        "baudrate": 115200
+        "baudrate": 921600
       }
     },
     "USART1": {
@@ -41,7 +41,7 @@
         "dir": "TxRx",
         "rx_size": 128,
         "tx_size": 128,
-        "baudrate": 115200
+        "baudrate": 921600
       }
     },
     "USART2": {
@@ -167,7 +167,7 @@
     "ICBSP_CAN_TX_ENABLE": 0,
     "ICBSP_UART_PATROL_ENABLE": 1
   },
-  "debug_uart": "USART1",
+  "debug_uart": "UART8",
   "external_flash": {
     "enabled": false,
     "layout": "QSPI_RAM",

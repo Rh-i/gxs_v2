@@ -24,6 +24,9 @@ Omni3Chassis chassis({.motor           = {&motor1, &motor2, &motor3},
                       .v_max_cm_s      = CHASSIS_V_MAX_CM_S,
                       .w_max_rad_s     = CHASSIS_W_MAX_RAD_S});
 
+/** @brief 上位机协议执行器（逻辑全在 host.cpp） */
+Host host;
+
 
 /* ==================== */
 

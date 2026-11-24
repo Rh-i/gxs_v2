@@ -8,30 +8,7 @@
 #ifndef __APP_TASK_HPP__
 #define __APP_TASK_HPP__
 
-#include <stdint.h>
-
-
-/* ==================== 任务间共享数据 ==================== */
-
-#ifdef __cplusplus
-extern "C"
-{
-#endif
-
-  /**
-   * @brief WT102 最新一帧的 yaw 原始值（int16）
-   *
-   * @note 由 imu_task 每 2 ms 刷新；别的任务只读。单独用 int16 传是为了避免
-   *       “一个任务写 wt102、另一个任务读 wt102”这种并发访问（库要求读取期间不得并发 update()）。
-   *       M7 上对 volatile int16_t 的单次读写是原子的，不需要临界区。
-   */
-  extern volatile int16_t g_imu_yaw_raw;
-
-#ifdef __cplusplus
-}
-#endif
-
-/* ==================== */
+#include <stdint.h> // 运行时开关用 uint8_t
 
 
 /* ==================== 任务入口 ==================== */
@@ -48,6 +25,14 @@ extern "C"
    *       本任务独占 key1 / key2 的 update()。
    */
   void key_task(void *argument);
+
+  /**
+   * @brief 上下位机通讯任务：USART10（921600）收指令 + 周期上报（独占 bsp_uart10）
+   * @param argument 任务参数（未使用，NULL）
+   * @note 只在遥控器 CH5 拨到上位机挡（`ControlSource::HOST`）时才把速度下给底盘。
+   *       协议说明见 `user/module/上位机协议.md`。
+   */
+  void host_task(void *argument);
 
   /**
    * @brief 舵机任务：50 Hz 推进 servo1 / servo2 的 update()
@@ -81,9 +66,28 @@ extern "C"
    */
   void imu_task(void *argument);
 
+  /**
+   * @brief 电机监控任务：1 kHz 把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat 发给 VOFA+
+   * @param argument 任务参数（未使用，NULL）
+   * @note 观察对象是全局变量 `motor_monitor_index`（0/1/2 → motor1/2/3，≥ 3 = 停发），
+   *       调试器或 EmberProbe 写它即可切换，无需重新烧录。
+   *       测试波形同受 `motor_test_wave` 控制（0 = 关，1 = 方波，2 = 正弦，±50 cm/s、2 s）。
+   *       波形走 USART1（921600），与调试打印 UART8 分开。
+   */
+  void motor_monitor_task(void *argument);
+
 #ifdef __cplusplus
 }
 #endif
+
+/* ==================== */
+/* 运行时开关（调试器 / EmberProbe 直接写，无需重新烧录） */
+
+/** @brief VOFA 观察（也是测试波形驱动）的电机：0/1/2 → motor1/2/3，≥ 3 = 停发 */
+extern volatile uint8_t motor_monitor_index;
+
+/** @brief 电机测试波形：0 = 关（底盘听遥控/上位机），1 = 方波 ±50 cm/s，2 = 正弦 50 cm/s / 2 s */
+extern volatile uint8_t motor_test_wave;
 
 /* ==================== */
 
