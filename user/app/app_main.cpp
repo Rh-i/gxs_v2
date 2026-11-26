@@ -109,7 +109,7 @@ extern "C" void app_init(void)
   ICBSP_CHECK(xTaskCreate(host_task, "host", 1024, NULL, osPriorityNormal, NULL) == pdPASS);
 
   //    电机任务：1 kHz 速度环，三台电机唯一的 update() 调用者。
-  ICBSP_CHECK(xTaskCreate(motor_task, "motor", 1024, NULL, osPriorityHigh, NULL) == pdPASS);
+  ICBSP_CHECK(xTaskCreate(motor_task, "motor", 1024, NULL, osPriorityHigh1, NULL) == pdPASS);
 
   //    遥控任务：100 Hz，读 R9DS → 底盘目标（独占 r9ds.update()）。
   ICBSP_CHECK(xTaskCreate(remote_task, "remote", 1024, NULL, osPriorityNormal, NULL) == pdPASS);
@@ -118,9 +118,9 @@ extern "C" void app_init(void)
   ICBSP_CHECK(xTaskCreate(imu_task, "imu", 1024, NULL, osPriorityHigh, NULL) == pdPASS);
 
   //    电机监控任务：1 kHz 把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat
-  //    发给 VOFA+（USART1，921600）。观察对象：motor_monitor_index（0/1/2 → motor1/2/3）
-  //    测试波形：motor_test_wave（0 = 关，1 = 方波，2 = 正弦，±50 cm/s、2 s）
-  ICBSP_CHECK(xTaskCreate(motor_monitor_task, "mon", 512, NULL, osPriorityNormal, NULL) == pdPASS);
+  //    发给 VOFA+（UART8，921600）。观察对象：motor_monitor_index（0/1/2 → motor1/2/3）
+  //    测试波形：motor_test_wave（0 = 关，1 = 方波，2 = 正弦，4 = 开环 ±20% 占空比）
+  // ICBSP_CHECK(xTaskCreate(motor_monitor_task, "mon", 512, NULL, osPriorityNormal, NULL) == pdPASS);
 
   // 5. 放行：置运行位，放行所有在 wait_running() 上等待的任务。
   //    初始化阶段有失败记录（例如 CAN 节点注册失败、外设 init() 失败）时，

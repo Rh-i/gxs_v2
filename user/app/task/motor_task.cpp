@@ -41,11 +41,18 @@ extern "C" void motor_task(void *argument)
 
   for (;;)
   {
+    // 关键：dt 的时间戳和编码器增量必须在**同一个不被任务切换打断**的窗口里取。
+    // 本任务与 imu_task 同为 osPriorityHigh，开了时间片轮转；若 imu_task 正好插在
+    // get_delta_s() 与 read_delta() 之间，delta 覆盖的时间会比 dt 长 → 速度瞬间偏高，
+    // PID 输出出现孤立毛刺（编码器本身是干净的）。
+    // vTaskSuspendAll() 只关闭任务切换、不关中断，窗口内 ISR 照常响应；窗口长度 ≈ 几十 µs。
+    vTaskSuspendAll();
     const float dt_s = static_cast<float>(bsp_dwt.get_delta_s(&mark));
 
     motor1.update(dt_s);
     motor2.update(dt_s);
     motor3.update(dt_s);
+    (void)xTaskResumeAll();
 
     vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(MOTOR_TASK_PERIOD_MS));
   }

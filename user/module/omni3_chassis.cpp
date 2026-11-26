@@ -56,7 +56,7 @@ void Omni3Chassis::drive(float vx_cm_s, float vy_cm_s, float wz_rad_s)
  * @brief 三个轮子真正停机
  *
  * @note 不能写成 drive(0,0,0)：那只是把目标设为 0，DeviceMotor 仍处于 SPEED 模式，
- *       速度环会跟着编码器的 ±1 抖动继续输出微小占空比，H 桥以 20 kHz 响个不停。
+ *       速度环会跟着编码器的 ±1 抖动继续输出微小占空比，H 桥以 10 kHz 响个不停。
  *       下面调的是 DeviceMotor::stop()：输出归 0、模式回 STOP、积分清零。
  */
 void Omni3Chassis::stop()

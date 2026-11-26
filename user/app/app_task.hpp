@@ -71,8 +71,9 @@ extern "C"
    * @param argument 任务参数（未使用，NULL）
    * @note 观察对象是全局变量 `motor_monitor_index`（0/1/2 → motor1/2/3，≥ 3 = 停发），
    *       调试器或 EmberProbe 写它即可切换，无需重新烧录。
-   *       测试波形同受 `motor_test_wave` 控制（0 = 关，1 = 方波，2 = 正弦，±50 cm/s、2 s）。
-   *       波形走 USART1（921600），与调试打印 UART8 分开。
+   *       测试波形同受 `motor_test_wave` 控制（0 = 关，1 = 方波，2 = 正弦，±50 cm/s、2 s，
+   *       4 = 开环固定 ±20% 占空比）。
+   *       波形走 UART8（921600，与调试打印同口）。
    */
   void motor_monitor_task(void *argument);
 

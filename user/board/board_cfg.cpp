@@ -51,7 +51,8 @@ constexpr float MOTOR_GEAR_RATIO         = 30.0f;
 constexpr float MOTOR_WHEEL_DIAMETER_CM  = 6.5f;
 
 // 速度环 PID 三台各写各的（见下面 motor1 / motor2 / motor3 的 .pid），调试时只改自己那台，互不影响。
-// 参数顺序：kp, ki, kd, out_max（起点值 18 / 0.016 / 0 / 1000）
+// PID::Config 位置参数：kp, ki, kd, out_max
+// 当前值：motor1 25/0.05、motor2 20/0.04、motor3 23/0.05，out_max 100
 
 /** 舵机默认角度：270° 舵机的中位（对应 1500 µs） */
 constexpr float SERVO_MID_DEG = 135.0f;
@@ -66,7 +67,7 @@ DeviceMotor motor1({.pwm_a              = &bsp_pwm_tim2_ch3,
                     .gear_ratio         = MOTOR_GEAR_RATIO,
                     .wheel_diameter_cm  = MOTOR_WHEEL_DIAMETER_CM,
                     .speed_lpf_hz       = 100.0f, // 速度反馈低通 100 Hz
-                    .pid                = PID::Config(25.0f, 0.05f, 0.0f, 100.0f)});
+                    .pid                = PID::Config(22.0f, 0.06f, 0.0f, 100.0f)});
 
 /// 电机2：PWM TIM12_CH1/CH2 + 编码器 TIM1
 DeviceMotor motor2({.pwm_a              = &bsp_pwm_tim12_ch1,
@@ -77,7 +78,7 @@ DeviceMotor motor2({.pwm_a              = &bsp_pwm_tim12_ch1,
                     .gear_ratio         = MOTOR_GEAR_RATIO,
                     .wheel_diameter_cm  = MOTOR_WHEEL_DIAMETER_CM,
                     .speed_lpf_hz       = 100.0f, // 速度反馈低通 100 Hz
-                    .pid                = PID::Config(20.0f, 0.04f, 0.0f, 100.0f)});
+                    .pid                = PID::Config(17.0f, 0.07f, 0.0f, 100.0f)});
 
 /// 电机3：PWM TIM8_CH1/CH2 + 编码器 TIM4
 DeviceMotor motor3({.pwm_a              = &bsp_pwm_tim8_ch1,
@@ -88,7 +89,7 @@ DeviceMotor motor3({.pwm_a              = &bsp_pwm_tim8_ch1,
                     .gear_ratio         = MOTOR_GEAR_RATIO,
                     .wheel_diameter_cm  = MOTOR_WHEEL_DIAMETER_CM,
                     .speed_lpf_hz       = 100.0f, // 速度反馈低通 100 Hz
-                    .pid                = PID::Config(23.0f, 0.05f, 0.0f, 100.0f)});
+                    .pid                = PID::Config(17.0f, 0.07f, 0.0f, 100.0f)});
 
 /// 舵机1：TIM5_CH1，270° 舵机，500~2500 µs 对应 0~270°
 DeviceServo servo1({.pwm = &bsp_pwm_tim5_ch1, .pulse_min_us = 500.0f, .pulse_max_us = 2500.0f, .range_deg = 270.0f});
