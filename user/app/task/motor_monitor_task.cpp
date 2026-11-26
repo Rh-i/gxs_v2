@@ -11,15 +11,15 @@
  * @note 自带测试波形（同一台电机，运行中可改 `motor_test_wave`）：
  *         0 = 关（底盘照常听遥控 / 上位机）
  *         1 = 方波 ±50 cm/s，周期 2 s（1 s 正 / 1 s 负）
- *         2 = 正弦波 +50 cm/s，周期 2 s，与方波同相
- *         4 = **开环档**：绕过 PID，直接给 ±20% 占空比（同相位），用来对比正反向驱动/被控对象是否对称
- *       测试开启期间 `remote_task` 不再写底盘（否则它 100 Hz 的 chassis.stop()
- *       会把目标冲掉）；**测试时不要同时发上位机运动指令**。
+ *         2 = 正弦波 ±50 cm/s，周期 2 s，与方波同相
+ *         4 = **开环档**：绕过 PID，直接给 ±50% 占空比（同相位），用来对比正反向驱动/被控对象是否对称
+ *       测试档非 0 时 `remote_task` 会让出底盘控制权（否则它 100 Hz 的 chassis.stop()
+ *       会把目标冲掉）—— **调完必须改回 0 才能用遥控器/上位机**；测试时也别同时发上位机运动指令。
  *       切回 0 或换台时，本任务会把上一台 `stop()` 掉，不留残余目标。
  *
  * @note 通道顺序（VOFA+ JustFloat，**4 通道**，帧尾 00 00 80 7F）：
  *         CH1 = 目标速度 (cm/s)、CH2 = 实测速度 (cm/s)、CH3 = PID 输出（占空比 %，带符号）、
- *         CH4 = 编码器原始计数（BspEncoder::read_raw()，int32 转 float，不乘任何换算）
+ *         CH4 = 编码器原始计数（库内 read_raw()，int32 转 float，不乘任何换算）
  *       开环档（wave = 4）下没有 PID 数据：CH1/CH3 报当前开环占空比，CH2 仍是实测速度。
  *       单帧 20 B，1 kHz 下 20 kB/s。
  *
@@ -41,14 +41,13 @@
 #include <math.h> // sinf
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h> // memcpy
 
 
 /** @brief 发送周期 (ms)：1 ms = 1 kHz，与 motor_task 同频，波形上能看到每拍细节 */
 constexpr uint32_t MOTOR_MONITOR_PERIOD_MS = 1U;
 
 /** @brief 测试波形幅值 (cm/s)：方波与正弦共用 */
-constexpr float MOTOR_TEST_AMP_CM_S =50.0f;
+constexpr float MOTOR_TEST_AMP_CM_S = 50.0f;
 /** @brief 测试波形周期 (s)：方波与正弦共用（方波 = 上半周 +50 / 下半周 −50，与正弦同相） */
 constexpr float MOTOR_TEST_PERIOD_S = 2.0f;
 
@@ -67,9 +66,6 @@ volatile uint8_t motor_test_wave = 0U;
 
 /** @brief 下标 → 实例；顺序与 motor_monitor_index 一致 */
 static DeviceMotor *const motor_monitor_list[] = {&motor1, &motor2, &motor3};
-
-/** @brief 下标 → 该电机的编码器（CH4 用）；顺序与 motor_monitor_index 一致，与 motor1/2/3 的绑定一致 */
-static BspEncoder *const motor_encoder_list[] = {&bsp_encoder_tim3, &bsp_encoder_tim1, &bsp_encoder_tim4};
 
 constexpr uint8_t MOTOR_MONITOR_COUNT = static_cast<uint8_t>(sizeof(motor_monitor_list) / sizeof(motor_monitor_list[0]));
 
@@ -143,20 +139,13 @@ extern "C" void motor_monitor_task(void *argument)
 
     if (motor != nullptr) // ≥ 3：停发
     {
-      // get_pid_frame 先给 3 个 float + 4 B 尾（共 16 B）；把尾往后挪，第 4 槽换成编码器原始计数，
-      // 重新补一个 JustFloat 尾 → 4 通道共 20 B 整帧入队，异步由 DMA 发出去。
-      uint8_t frame[20];
-      const size_t len = motor->get_pid_frame(frame, DeviceMotor::PID_ALL); // 3 通道 16 B
-
-      if (len == 16U)
+      // 库直接给 4 通道 JustFloat（目标 / 反馈 / PID 输出 / 编码器原始计数），整帧 20 B，
+      // 入队后由 DMA 异步发出去（超时 1 ms，丢帧不拖住 1 kHz 节拍）。
+      uint8_t      frame[20];
+      const size_t len = motor->get_pid_frame(frame, DeviceMotor::PID_ALL);
+      if (len == 20U)
       {
-        const float raw = static_cast<float>(motor_encoder_list[idx]->read_raw());
-        memcpy(&frame[12], &raw, sizeof(raw));
-        frame[16] = 0x00U;
-        frame[17] = 0x00U;
-        frame[18] = 0x80U;
-        frame[19] = 0x7FU;
-        (void)bsp_uart8.send(frame, 20U, 1U);
+        (void)bsp_uart8.send(frame, len, 1U);
       }
     }
 

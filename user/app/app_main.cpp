@@ -119,7 +119,8 @@ extern "C" void app_init(void)
 
   //    电机监控任务：1 kHz 把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat
   //    发给 VOFA+（UART8，921600）。观察对象：motor_monitor_index（0/1/2 → motor1/2/3）
-  //    测试波形：motor_test_wave（0 = 关，1 = 方波，2 = 正弦，4 = 开环 ±20% 占空比）
+  //    测试波形：motor_test_wave（0 = 关，1 = 方波，2 = 正弦，4 = 开环 ±50% 占空比）
+  //    注意：非 0 时 remote_task 会让出底盘，遥控/上位机不可用
   // ICBSP_CHECK(xTaskCreate(motor_monitor_task, "mon", 512, NULL, osPriorityNormal, NULL) == pdPASS);
 
   // 5. 放行：置运行位，放行所有在 wait_running() 上等待的任务。

@@ -129,9 +129,10 @@ extern "C" void remote_task(void *argument)
   {
     r9ds.update(); // 本任务是该串口唯一的接收消费者
 
-    // 电机测试进行中（motor_test_wave ≠ 0）：本任务不碰底盘，否则这里的 chassis.stop()
-    // 会以 100 Hz 把 motor_monitor_task 写进去的测试目标 / 开环占空比冲掉。
-    if (motor_test_wave != 0U)
+    // 电机测试进行中（motor_test_wave ≠ 0 且确实有电机在测）：本任务不碰底盘，否则这里的
+    // chassis.stop() 会以 100 Hz 把 motor_monitor_task 写进去的测试目标 / 开环占空比冲掉。
+    // 注意 motor_monitor_index ≥ 3 时监控任务不驱动任何电机，此时不应屏蔽遥控。
+    if ((motor_test_wave != 0U) && (motor_monitor_index < 3U))
     {
       spin_mode = false;
       vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(REMOTE_PERIOD_MS));

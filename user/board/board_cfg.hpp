@@ -101,8 +101,8 @@ inline ICBSP_DMA_BUFFER(bsp_uart1) BspUartT<uart_mode::dma, 512, 512> bsp_uart1(
 inline ICBSP_DMA_BUFFER(bsp_uart2) BspUartT<uart_mode::dma, 256, 128> bsp_uart2({.huart = &huart2, .mode = UartDir::RxOnly, .baudrate = 230400U});
 /// UART5：R9DS 遥控（PB5/PC12，SBUS：100000、8 数据位 + 偶校验 + 2 停止位，DMA 只收）
 inline ICBSP_DMA_BUFFER(bsp_uart5) BspUartT<uart_mode::dma, 256, 128> bsp_uart5({.huart = &huart5, .mode = UartDir::RxOnly, .baudrate = 100000U});
-/// UART8：**调试打印串口**（PE0/PE1，921600 8N1，DMA 收发；也承载 VOFA JustFloat 波形）
-inline ICBSP_DMA_BUFFER(bsp_uart8) BspUartT<uart_mode::dma, 128, 128> bsp_uart8({.huart = &huart8, .mode = UartDir::TxRx, .baudrate = 921600U});
+/// UART8：**调试打印串口**（PE0/PE1，921600 8N1，DMA 收发；也承载 VOFA JustFloat 波形；TX 缓冲 512 防帧被截断）
+inline ICBSP_DMA_BUFFER(bsp_uart8) BspUartT<uart_mode::dma, 128, 512> bsp_uart8({.huart = &huart8, .mode = UartDir::TxRx, .baudrate = 921600U});
 /// USART10：**上下位机通讯串口**（PE2/PE3，921600 8N1，DMA 收发，缓冲加大到 512）
 inline ICBSP_DMA_BUFFER(bsp_uart10) BspUartT<uart_mode::dma, 512, 512> bsp_uart10({.huart = &huart10, .mode = UartDir::TxRx, .baudrate = 921600U});
 /// TIM2_CH3 / CH4：电机1 H 桥（PB10/PB11，10 kHz）
