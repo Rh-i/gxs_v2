@@ -61,17 +61,6 @@ PID。速度环输出的是占空比，`out_max` 为 100。
 KEY2 短按换颜色，长按 600 ms 推送 `FIELD_STATUS`（100 ms 一帧，共 10 帧，收到上位机的
 `0xAC` 提前停止）。
 
-## 构建与烧录
-
-```bash
-cmake --preset Debug
-cmake --build --preset Debug
-bash Flash/OpenOCD_flash.sh          # CMSIS-DAP
-bash Flash/JLink_flash.sh            # 经 OpenOCD 用 J-Link
-```
-
-VS Code 里对应任务：`Build`、`Clean_Rebuild`、`OpenOCD_flash`、`JLink_flash`。
-
 ## 联调
 
 上位机接 USART1。测试时用 CH343P（USB 厂商号 `1a86`）转到电脑，一般枚举成
