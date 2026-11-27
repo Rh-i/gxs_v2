@@ -121,10 +121,10 @@ inline BspEncoder bsp_encoder_tim3({.htim = &htim3, .invert = false});
 inline BspEncoder bsp_encoder_tim1({.htim = &htim1, .invert = false});
 /// TIM4：编码器（PD12/PD13）→ 电机3
 inline BspEncoder bsp_encoder_tim4({.htim = &htim4, .invert = false});
-/// KEY1：PE4，GPIO 输入（板上已外部上拉），按下为低。key_task 按 200 ms 轮询：消抖 1×=200 ms、长按 3×=600 ms
-inline BspKey key1({.port = KEY1_GPIO_Port, .pin = KEY1_Pin, .active_low = true, .debounce_cnt = 1U, .long_press_cnt = 3U});
+/// KEY1：PE4，GPIO 输入（板上已外部上拉），按下为低。key_task 按 50 ms 轮询：消抖 2×=100 ms、长按 10×=500 ms
+inline BspKey key1({.port = KEY1_GPIO_Port, .pin = KEY1_Pin, .active_low = true, .debounce_cnt = 2U, .long_press_cnt = 10U});
 /// KEY2：PE5，参数同 key1（外部上拉）
-inline BspKey key2({.port = KEY2_GPIO_Port, .pin = KEY2_Pin, .active_low = true, .debounce_cnt = 1U, .long_press_cnt = 3U});
+inline BspKey key2({.port = KEY2_GPIO_Port, .pin = KEY2_Pin, .active_low = true, .debounce_cnt = 2U, .long_press_cnt = 10U});
 /// LED1：PC13，GPIO 输出（CubeMX 里初始电平 Reset；板上低电平点亮时也就对应“亮”）
 inline BspGpio led1({.port = LED1_GPIO_Port, .pin = LED1_Pin});
 

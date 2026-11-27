@@ -1,11 +1,11 @@
 /**
  * @file key_task.cpp
- * @brief 按键任务：200 ms 轮询 key1 / key2，把 PRESS / SHORT / LONG 事件打到调试串口
+ * @brief 按键任务：50 ms 轮询 key1 / key2，把 PRESS / SHORT / LONG 事件打到调试串口
  * @date 2026-11-21
  *
  * @note 轮询周期与消抖/长按阈值一起决定手感（BspKey：时间 = 计数 × 周期）：
- *       本工程 key1/key2 配的是 debounce_cnt = 1、long_press_cnt = 3，
- *       在 200 ms 轮询下即 **200 ms 消抖 / 600 ms 长按**。改周期时记得同步改 board_cfg.hpp。
+ *       本工程 key1/key2 配的是 debounce_cnt = 2、long_press_cnt = 10，
+ *       在 50 ms 轮询下即 **100 ms 消抖 / 500 ms 长按**。改周期时记得同步改 board_cfg.hpp。
  *
  * @note 本任务是 key1 / key2 唯一的轮询者（BspKey 非线程安全）。
  *       板载 LED 由 app_default_task 每 500 ms 翻转，本任务不碰它。
@@ -15,8 +15,7 @@
 
 #include "board_cfg.hpp"             // key1 / key2 / print_uart(bsp_uart8)
 #include "bsp/bsp_key.hpp"           // BspKey::Event
-#include "field_ui.hpp"              // 场地页 UI 的时间戳
-#include "module_cfg.hpp"            // 出生点 / 安全区
+#include "module_cfg.hpp"            // 出生点 / 安全区 / field_ui::sent_ms
 #include "service/system/system.hpp" // sys_state
 
 #include "FreeRTOS.h" // IWYU pragma: keep
@@ -26,7 +25,7 @@
 
 
 /** @brief 轮询周期 (ms)：与 board_cfg.hpp 里 debounce_cnt / long_press_cnt 的取值配套 */
-constexpr uint32_t KEY_TASK_PERIOD_MS = 200U;
+constexpr uint32_t KEY_TASK_PERIOD_MS = 50U;
 
 
 /* ==================== 调试观察量（GDB：print key1_events / key2_events） ==================== */
@@ -63,27 +62,6 @@ static uint32_t now_ms()
   return static_cast<uint32_t>(xTaskGetTickCount() * 1000U / configTICK_RATE_HZ);
 }
 
-/** @brief 按下/松开时更新场地页的按住时刻（0 = 没按住） */
-static void ui_key(BspKey::Event ev)
-{
-  switch (ev)
-  {
-  case BspKey::Event::PRESS:
-  {
-    // 扣掉消抖延迟：PRESS 总是在电平跳变 debounce 之后才报，进度条要按真实按下时刻算
-    const uint32_t now = now_ms();
-    field_ui::press_ms = (now > field_ui::DEBOUNCE_MS) ? (now - field_ui::DEBOUNCE_MS) : 1U;
-    break;
-  }
-  case BspKey::Event::SHORT:
-  case BspKey::Event::LONG:
-    field_ui::press_ms = 0U;
-    break;
-  default:
-    break;
-  }
-}
-
 /* ==================== */
 
 
@@ -105,7 +83,6 @@ extern "C" void key_task(void *argument)
     {
       key1_events = key1_events + 1U; // volatile 上不用 ++（C++20 起弃用）
       report("KEY1", e1);
-      ui_key(e1);
 
       // KEY1 短按：出生点 1 → 2 → 3 → 4 → 1（只改本地值，不发）
       if (e1 == BspKey::Event::SHORT)
@@ -128,7 +105,6 @@ extern "C" void key_task(void *argument)
     {
       key2_events = key2_events + 1U;
       report("KEY2", e2);
-      ui_key(e2);
 
       // KEY2 短按：安全区 1 ↔ 2（只改本地值，不发）
       if (e2 == BspKey::Event::SHORT)

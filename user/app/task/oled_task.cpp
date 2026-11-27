@@ -21,7 +21,7 @@
  *   - 出发区：四角 16×16 框，里面只有数字；选中的整格反白；
  *   - 安全区：`红` 在 1/2 中间（上沿）、`蓝` 在 3/4 中间（下沿），都是 16×16 框，
  *     选中的那一个反白；
- *   - 右侧两行：`出生点N`、`安全区 红/蓝`；长按时最下面一行跑进度条，确认后 1 s 显示 `已发送`。
+ *   - 右侧两行：`出生点N`、`安全区 红/蓝`；确认后 1 s 显示 `已发送`。
  *
  * @note 几何全部按 8 像素页对齐，所以直接写显存字节（`oled.get_gram()`），不做位偏移。
  * @note 这块屏的扫描方向是上下反的（页 0 显示在下面），所以画完在 `render()` 最后统一做一次
@@ -33,9 +33,8 @@
 #include "app_task.hpp"
 
 #include "board_cfg.hpp"                 // oled
-#include "field_ui.hpp"                  // press_ms / sent_ms
 #include "i2c.h"                         // hi2c1（没接屏时重试 init）
-#include "module_cfg.hpp"                // host：出生点 / 安全区
+#include "module_cfg.hpp"                // host：出生点 / 安全区；field_ui::sent_ms
 #include "oled_font16.hpp"               // 16×16 中文与数字字模
 #include "service/system/system.hpp"     // sys_state
 
@@ -74,8 +73,6 @@ constexpr uint8_t SAFE_BLUE_Y = 48U;
 constexpr uint8_t TEXT_X       = 64U;            ///< 右侧文字起点
 constexpr uint8_t ROW_SPAWN_Y  = 8U;             ///< `出生点N`
 constexpr uint8_t ROW_SAFE_Y   = 32U;            ///< `安全区 红/蓝`
-constexpr uint8_t BAR_Y        = 56U;            ///< 长按进度条（4 px 高）
-constexpr uint8_t BAR_BITS     = 0x0FU;          ///< 页内第 0~3 行
 constexpr uint8_t SENT_Y       = 48U;            ///< `已发送`（反白）
 
 /** @brief 一行文字用到的字模下标 */
@@ -209,7 +206,6 @@ struct View
 {
   uint8_t spawn     = 1U;    ///< 1~4
   uint8_t zone      = 1U;    ///< 1 红 / 2 蓝
-  uint8_t hold      = 0U;    ///< 0~100（10 的倍数）
   bool    sent      = false; ///< 显示 `已发送`
   bool    lit_spawn = true;  ///< 出发区高亮（闪烁时短暂为 false）
   bool    lit_zone  = true;  ///< 安全区高亮
@@ -217,7 +213,7 @@ struct View
 
 bool operator==(const View &a, const View &b)
 {
-  return (a.spawn == b.spawn) && (a.zone == b.zone) && (a.hold == b.hold) && (a.sent == b.sent) &&
+  return (a.spawn == b.spawn) && (a.zone == b.zone) && (a.sent == b.sent) &&
          (a.lit_spawn == b.lit_spawn) && (a.lit_zone == b.lit_zone);
 }
 
@@ -280,16 +276,11 @@ void render(const View &v)
   blit(static_cast<uint8_t>(TEXT_X + 48U), static_cast<uint8_t>(ROW_SAFE_Y / 8U),
        (v.zone == 1U) ? GH_HONG : GH_LAN, false);
 
-  /* --- 已发送 / 长按进度条 --- */
+  /* --- 已发送 --- */
   if (v.sent)
   {
     fill_box(TEXT_X, SENT_Y, static_cast<uint8_t>(TEXT_X + 47U), static_cast<uint8_t>(SENT_Y + 15U));
     text(TEXT_X, static_cast<uint8_t>(SENT_Y / 8U), TXT_SENT, 3U, true);
-  }
-  else if (v.hold > 0U)
-  {
-    const uint8_t n = static_cast<uint8_t>((v.hold * 64U) / 100U);
-    hline(TEXT_X, static_cast<uint8_t>(TEXT_X + n - 1U), BAR_Y, BAR_BITS);
   }
 
   mirror_frame(); // 面板上下反：提交前统一翻一次
@@ -336,23 +327,6 @@ uint32_t now_ms()
   return static_cast<uint32_t>(xTaskGetTickCount() * 1000U / configTICK_RATE_HZ);
 }
 
-/** @brief 长按进度：0~100，10 的倍数（没按住时 0） */
-uint8_t hold_percent(uint32_t now)
-{
-  const uint32_t t = field_ui::press_ms;
-  if (t == 0U)
-  {
-    return 0U;
-  }
-
-  uint32_t el = now - t;
-  if (el >= field_ui::LONG_PRESS_MS)
-  {
-    return 100U;
-  }
-  return static_cast<uint8_t>(((el * 100U) / field_ui::LONG_PRESS_MS) / 10U * 10U);
-}
-
 bool sent_visible(uint32_t now)
 {
   const uint32_t t = field_ui::sent_ms;
@@ -369,7 +343,7 @@ extern "C" void oled_task(void *argument)
 
   TickType_t wake_time = xTaskGetTickCount();
   TickType_t last_try  = wake_time;
-  View       shown;          // 已经画在屏上的内容
+  View       shown;              // 已经画在屏上的内容
   bool       drawn_once = false; // 首帧无论内容是否等于默认值都要画一次
   Blink      blink_spawn;
   Blink      blink_zone;
@@ -382,6 +356,7 @@ extern "C" void oled_task(void *argument)
     {
       last_try = xTaskGetTickCount();
       (void)oled.init(&hi2c1, OLED_I2C_ADDR);
+      drawn_once = false;
     }
 
     if (oled.is_ready())
@@ -397,7 +372,6 @@ extern "C" void oled_task(void *argument)
       View v;
       v.spawn     = spawn;
       v.zone      = zone;
-      v.hold      = hold_percent(now);
       v.sent      = sent_visible(now);
       v.lit_spawn = blink_lit(blink_spawn);
       v.lit_zone  = blink_lit(blink_zone);

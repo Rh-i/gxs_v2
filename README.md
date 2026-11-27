@@ -32,7 +32,7 @@ FreeRTOS（CMSIS_V2），tick 1 kHz。优先级从高到低：
 | --------------- | ---------- | ----------- | ---------------------------------------------- |
 | `motor_task`  | 1 kHz      | High1 (41)  | 三台电机的速度环，唯一调用 `update()` 的地方 |
 | `host_task`   | 事件驱动   | High (40)   | 上位机串口收发，空闲时睡 `portMAX_DELAY`     |
-| `key_task`    | 200 ms     | Normal (24) | KEY1 / KEY2 消抖与短按、长按识别               |
+| `key_task`    | 50 ms      | Normal (24) | KEY1 / KEY2 消抖与短按、长按识别               |
 | `servo_task`  | 50 Hz      | Normal (24) | 舵机目标角推进                                 |
 | `remote_task` | 100 Hz     | Normal (24) | 读 R9DS，按 CH5 决定控制源                     |
 | `oled_task`   | 40 ms 节拍 | Low (8)     | 场地页，画面不变时不刷屏                       |
@@ -54,12 +54,13 @@ PID。速度环输出的是占空比，`out_max` 为 100。
 为 M1 右前、M2 左前、M3 正后。
 
 **上位机协议**。帧格式、指令表、回帧、测试字节串都在
-[`user/module/上位机协议.md`](user/module/上位机协议.md)。要点：无版本字段，`AA 55` 帧头，
+[`user/docs/上位机协议.md`](user/docs/上位机协议.md)。要点：无版本字段，`AA 55` 帧头，
 `0D 0A` 帧尾，`SUM` 从 `TYPE` 起累加。
 
-**场地页**。OLED 显示四角出生点与红蓝两处安全区，选中项整格反白。KEY1 短按换出生点，
-KEY2 短按换颜色，长按 600 ms 推送 `FIELD_STATUS`（100 ms 一帧，共 10 帧，收到上位机的
-`0xAC` 提前停止）。
+**场地页**。OLED 显示四角出生点与红蓝两处安全区，右侧显示当前选中项。KEY1 短按换出生点，
+KEY2 短按换颜色，长按 500 ms 推送 `FIELD_STATUS`（100 ms 一帧，共 10 帧，收到上位机的
+`0xAC` 提前停止）；确认成功后右侧显示
+`已发送` 一秒。
 
 ## 联调
 
@@ -67,10 +68,10 @@ KEY2 短按换颜色，长按 600 ms 推送 `FIELD_STATUS`（100 ms 一帧，共
 `/dev/ttyACM0`，参数 921600 8N1。
 
 ```bash
-python3 tools/proto_test.py find                              # 找哪个口在跑协议
-python3 tools/proto_test.py -p /dev/ttyACM0 ping --count 5    # 判活
-python3 tools/proto_test.py -p /dev/ttyACM0 monitor           # 解码打印所有回帧
-python3 tools/proto_test.py -p /dev/ttyACM0 selftest          # 全流程自检
+python3 user/tools/proto_test.py find                              # 找哪个口在跑协议
+python3 user/tools/proto_test.py -p /dev/ttyACM0 ping --count 5    # 判活
+python3 user/tools/proto_test.py -p /dev/ttyACM0 monitor           # 解码打印所有回帧
+python3 user/tools/proto_test.py -p /dev/ttyACM0 selftest          # 全流程自检
 ```
 
 其余命令（速度、位移、舵机、急停、场地确认）见协议文档 §12。
@@ -89,9 +90,9 @@ Core/           CubeMX 生成的初始化与中断
 Drivers/        STM32 HAL 与 CMSIS
 Middlewares/Third_Party/ICBSP   板级库子模块（串口、PWM、编码器、电机、舵机、按键、OLED）
 user/board/     外设实例与 board_init()
-user/module/    底盘运动学、上位机协议执行器、场地页时间戳
+user/module/    底盘运动学、上位机协议执行器、模块层全局实例（chassis / host / 按键状态）
 user/app/       任务实现与任务创建
 Flash/          OpenOCD / J-Link 烧录脚本
-tools/          proto_test.py 协议测试工具
+user/tools/     proto_test.py 协议测试工具
 cmake/          工具链与 CubeMX 接入
 ```

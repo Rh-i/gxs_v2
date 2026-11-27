@@ -19,9 +19,9 @@ extern "C"
 #endif
 
   /**
-   * @brief 按键任务：200 ms 轮询 key1 / key2，把短按/长按事件打到调试串口
+   * @brief 按键任务：50 ms 轮询 key1 / key2，把短按/长按事件打到调试串口
    * @param argument 任务参数（未使用，NULL）
-   * @note 轮询周期与 board_cfg.hpp 里 debounce_cnt / long_press_cnt 配套（200 ms 消抖 / 1 s 长按）。
+   * @note 轮询周期与 board_cfg.hpp 里 debounce_cnt / long_press_cnt 配套（100 ms 消抖 / 500 ms 长按）。
    *       本任务独占 key1 / key2 的 update()。
    */
   void key_task(void *argument);

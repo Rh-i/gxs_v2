@@ -21,7 +21,6 @@
  *   - 只有 `ControlSource::HOST` 时速度类指令才执行，否则回 `RES_REJECTED`
  *   - 场地信息：**按键长按时直接发一帧**（`send_field_now()`，`send()` 支持多写者），
  *     主循环不需要为它额外唤醒
- *   - 没有周期心跳、没有周期遥测（没有 IMU / 电机状态上报）
  */
 
 #ifndef __HOST_HPP__
@@ -222,9 +221,5 @@ private:
 
   /* ==================== */
 };
-
-
-/** @brief 全局唯一实例（在 module_cfg.cpp 里定义） */
-extern Host host;
 
 #endif // __HOST_HPP__

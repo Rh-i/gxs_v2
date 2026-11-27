@@ -100,7 +100,7 @@ extern "C" void app_init(void)
   //    osPriorityNormal（24）、osPriorityHigh（40）都可以。
   //    业务任务里的排序：motor(High1=41) > host(High=40) > key/servo/remote(24) > oled(Low)。
   //
-  //    按键任务：200 ms 轮询 key1 / key2（独占它们的 update()）。
+  //    按键任务：50 ms 轮询 key1 / key2（独占它们的 update()）。
   ICBSP_CHECK(xTaskCreate(key_task, "key", 512, NULL, osPriorityNormal, NULL) == pdPASS);
 
   //    舵机任务：50 Hz 推进 servo1 / servo2（独占它们的 update()，默认中位 135°）。
