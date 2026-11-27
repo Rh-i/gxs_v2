@@ -1,43 +1,43 @@
 # gxs_v2 下位机
 
-STM32H723 三麦轮全向底盘固件。负责速度环、底盘运动学、遥控与上位机指令的仲裁，
+STM32H723 三全向轮底盘固件。负责速度环、底盘运动学、遥控与上位机指令的仲裁，
 以及出生点和安全区颜色的设置与显示。
 
 ## 硬件
 
-| 项 | 参数 |
-| --- | --- |
-| MCU | STM32H723VGT6，550 MHz，1 MB Flash / 128 KB DTCM |
-| 电机 | 3 路 H 桥，PWM 10 kHz（ARR 27499） |
-| 编码器 | 500 线 × 4 倍频，减速比 1:30，轮径 6.5 cm |
-| 舵机 | 2 路，TIM5_CH1 / CH2，500~2500 µs，270° |
-| 遥控 | R9DS，SBUS |
-| 显示 | SSD1306 128×64，I2C1，地址 0x3C |
-| 按键 | KEY1 = PE4，KEY2 = PE5，按下为低 |
+| 项     | 参数                                             |
+| ------ | ------------------------------------------------ |
+| MCU    | STM32H723VGT6，550 MHz，1 MB Flash / 128 KB DTCM |
+| 电机   | 3 路 H 桥，PWM 10 kHz（ARR 27499）               |
+| 编码器 | 500 线 × 4 倍频，减速比 1:30，轮径 6.5 cm       |
+| 舵机   | 2 路，TIM5_CH1 / CH2，500~2500 µs，270°        |
+| 遥控   | R9DS，SBUS                                       |
+| 显示   | SSD1306 128×64，I2C1，地址 0x3C                 |
+| 按键   | KEY1 = PE4，KEY2 = PE5，按下为低                 |
 
 串口分配：
 
-| 串口 | 引脚 | 波特率 | 用途 |
-| --- | --- | --- | --- |
-| USART1 | PB6 = TX，PB7 = RX | 921600 | 上位机协议 |
-| UART5 | PB5 / PC12 | 100000 | R9DS SBUS |
-| UART8 | PE0 / PE1 | 921600 | 调试打印 + VOFA 波形 |
-| USART10 | PE2 / PE3 | 921600 | 预留 |
+| 串口    | 引脚               | 波特率 | 用途                 |
+| ------- | ------------------ | ------ | -------------------- |
+| USART1  | PB6 = TX，PB7 = RX | 921600 | 上位机协议           |
+| UART5   | PB5 / PC12         | 100000 | R9DS SBUS            |
+| UART8   | PE0 / PE1          | 921600 | 调试打印 + VOFA 波形 |
+| USART10 | PE2 / PE3          | 921600 | 预留                 |
 
 ## 任务
 
 FreeRTOS（CMSIS_V2），tick 1 kHz。优先级从高到低：
 
-| 任务 | 周期 | 优先级 | 职责 |
-| --- | --- | --- | --- |
-| `motor_task` | 1 kHz | High1 (41) | 三台电机的速度环，唯一调用 `update()` 的地方 |
-| `host_task` | 事件驱动 | High (40) | 上位机串口收发，空闲时睡 `portMAX_DELAY` |
-| `key_task` | 200 ms | Normal (24) | KEY1 / KEY2 消抖与短按、长按识别 |
-| `servo_task` | 50 Hz | Normal (24) | 舵机目标角推进 |
-| `remote_task` | 100 Hz | Normal (24) | 读 R9DS，按 CH5 决定控制源 |
-| `oled_task` | 40 ms 节拍 | Low (8) | 场地页，画面不变时不刷屏 |
-| 库 `sys_task` | 10 ms | 52 | ICBSP 的串口 / 总线巡检 |
-| 定时器服务 | — | 20 | `FIELD_STATUS` 重发 |
+| 任务            | 周期       | 优先级      | 职责                                           |
+| --------------- | ---------- | ----------- | ---------------------------------------------- |
+| `motor_task`  | 1 kHz      | High1 (41)  | 三台电机的速度环，唯一调用 `update()` 的地方 |
+| `host_task`   | 事件驱动   | High (40)   | 上位机串口收发，空闲时睡 `portMAX_DELAY`     |
+| `key_task`    | 200 ms     | Normal (24) | KEY1 / KEY2 消抖与短按、长按识别               |
+| `servo_task`  | 50 Hz      | Normal (24) | 舵机目标角推进                                 |
+| `remote_task` | 100 Hz     | Normal (24) | 读 R9DS，按 CH5 决定控制源                     |
+| `oled_task`   | 40 ms 节拍 | Low (8)     | 场地页，画面不变时不刷屏                       |
+| 库 `sys_task` | 10 ms      | 52          | ICBSP 的串口 / 总线巡检                        |
+| 定时器服务      | —         | 20          | `FIELD_STATUS` 重发                          |
 
 `motor_monitor_task`（1 kHz，VOFA 波形）默认注释掉，需要时在 `app_main.cpp` 打开。
 
