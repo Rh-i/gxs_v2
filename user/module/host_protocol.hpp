@@ -1,18 +1,18 @@
 /**
  * @file host_protocol.hpp
  * @author Rh
- * @brief 上下位机串口协议（USART10 / 921600）—— 帧格式与编解码
- * @version 0.1
+ * @brief 上下位机串口协议（USART1 / 921600）—— 帧格式与编解码
+ * @version 0.3
  * @date 2026-11-22
  *
  * @details
  *
- * 【帧格式】（上下行通用）
+ * 【帧格式】（上下行通用，无版本字段）
  *
- *     0xAA 0x55 | VER | TYPE | SEQ | LEN | PAYLOAD ... | SUM
- *       帧头     版本   类型   序号  长度     载荷        累加和(低 8 位)
+ *     0xAA 0x55 | TYPE | SEQ | LEN | PAYLOAD ... | SUM | 0x0D 0x0A
+ *       帧头     类型   序号  长度     载荷        累加和   帧尾
  *
- *   - `SUM` = 从 `VER` 起、到 `PAYLOAD` 最后一个字节的**无符号 8 位累加和**（不含两个帧头字节）
+ *   - `SUM` = 从 `TYPE` 起、到 `PAYLOAD` 最后一个字节的**无符号 8 位累加和**（不含两个帧头字节）
  *   - `LEN <= MAX_PAYLOAD`，越界帧直接丢弃并重新找帧头
  *   - 多字节数值一律**小端**；角度单位 0.1°、速度 cm/s、角速度 mrad/s
  *
@@ -34,10 +34,11 @@ namespace host_proto
 
 constexpr uint8_t SOF1 = 0xAAU; ///< 帧头 1
 constexpr uint8_t SOF2 = 0x55U; ///< 帧头 2
-constexpr uint8_t VER  = 0x01U; ///< 协议版本
+constexpr uint8_t EOF1 = 0x0DU; ///< 帧尾 1
+constexpr uint8_t EOF2 = 0x0AU; ///< 帧尾 2
 
 constexpr size_t MAX_PAYLOAD = 48U;                         ///< 载荷上限（超过视为错误帧）
-constexpr size_t OVERHEAD    = 7U;                          ///< AA 55 VER TYPE SEQ LEN SUM
+constexpr size_t OVERHEAD    = 8U;                          ///< AA 55 TYPE SEQ LEN SUM 0D 0A
 constexpr size_t MAX_FRAME   = OVERHEAD + MAX_PAYLOAD;      ///< 一整帧的字节上限
 
 /* ==================== */
@@ -48,25 +49,21 @@ constexpr size_t MAX_FRAME   = OVERHEAD + MAX_PAYLOAD;      ///< 一整帧的字
 enum Type : uint8_t
 {
   /* ---- 上位机 → 车 ---- */
-  CMD_VEL      = 0x01U, ///< i16 vx, i16 vy, i16 wz（车体系，cm/s、cm/s、mrad/s）
-  CMD_VEL_TIME = 0x02U, ///< 同 CMD_VEL + u16 dur_ms：跑够时长自动停
-  CMD_MOVE     = 0x03U, ///< i16 x_cm, i16 y_cm, i16 yaw_0p1deg, u8 ref（0 车体 / 1 场地）
-  CMD_SERVO    = 0x04U, ///< u8 id(1/2), u16 angle_0p1deg（0~2700）
-  PING         = 0x05U, ///< 可选 u32 时间戳（回 PONG 时原样带回）
-  CMD_TASK     = 0x06U, ///< u8 task_id, u8 arg（任务 1/2/3 预留）
-  ESTOP        = 0xFFU, ///< 急停，可省理由字节
+  CMD_VEL      = 0x01U, ///< i16 vx, i16 vy, i16 wz（车体系，cm/s、cm/s、mrad/s）：持续速度
+  CMD_VEL_TIME = 0x02U, ///< 同 CMD_VEL + u16 dur_ms：按该速度跑一段后自动停，完成回 MOVE_DONE
+  CMD_MOVE     = 0x03U, ///< i16 x_cm, i16 y_cm, u16 speed_cm_s：按该速度直线开到车体系点（5~100）
+  CMD_SERVO    = 0x04U, ///< u8 id(1/2), u16 angle_0p1deg（0~2700 = 0~270°）
+  PING         = 0x05U, ///< 无载荷：判活（只回一帧 PONG：在线 + 开机时长）
+  HOST_ACK     = 0xACU, ///< u8 acked_type, u8 acked_seq：上位机对 FIELD_STATUS 的确认（收到就停重发）
+  ESTOP        = 0xFFU, ///< 急停：立即停车 + 清运动任务，回 EVENT + ACK
 
   /* ---- 车 → 上位机 ---- */
-  ACK          = 0x00U, ///< u8 acked_type, u8 acked_seq, u8 result
-  FIELD_STATUS = 0x01U, ///< u8 spawn_id(1~4), u8 safe_zone(1/2)
-  STATE        = 0x02U, ///< u8 source, u16 fault, u32 uptime_ms（**只在控制源变化 / 上电时发**）
-  IMU          = 0x03U, ///< **预留**（本固件不发）i16 yaw_0p1deg, i16 wz_mrad_s
-  MOTORS       = 0x04U, ///< **预留**（本固件不发）3 × (i16 target, i16 actual, i16 out_0p1pct)
-  /* 0x05 原 SERVO 反馈：舵机无位置反馈，不传输（上位机自己记目标） */
-  EVENT        = 0x06U, ///< u8 code, u8 data
-  HELLO        = 0x07U, ///< u8 ver, u8 fw_major, u8 fw_minor
-  MOVE_DONE    = 0x08U, ///< u8 cmd_type, u8 cmd_seq, u8 result
-  PONG         = 0x0FU, ///< u32 uptime_ms（回 PING）
+  ACK          = 0x00U, ///< u8 acked_type, u8 acked_seq, u8 result：对上行指令的应答
+  FIELD_STATUS = 0x01U, ///< u8 spawn_id(1~4), u8 safe_zone(1=红/2=蓝)：长按确认后发，100 ms×10，收到 HOST_ACK 停
+  STATE        = 0x02U, ///< u8 source(0 RC/1 HOST/2 STOP), u16 fault, u32 uptime_ms：控制权与运行时长
+  EVENT        = 0x06U, ///< u8 code, u8 data：异步事件（目前只有急停 code=2）
+  MOVE_DONE    = 0x08U, ///< u8 cmd_type, u8 cmd_seq, u8 result：CMD_MOVE / CMD_VEL_TIME 结束或被打断
+  PONG         = 0x0FU, ///< u32 uptime_ms：回 PING，带回开机时长
 };
 
 /** @brief ACK / MOVE_DONE 的结果码 */
@@ -115,7 +112,7 @@ struct Frame
  * @brief 逐字节解析器：喂一个字节，凑齐一帧且校验通过时返回 true
  *
  * @note 失败就丢弃 1 个字节重新同步（不会整段丢掉后面的好帧）；
- *       `LEN` 超过 `MAX_PAYLOAD` 或版本不符同样只丢 1 字节。
+ *       `LEN` 超过 `MAX_PAYLOAD` 或累加和/帧尾不对同样只丢 1 字节。
  */
 class Parser
 {

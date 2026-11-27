@@ -9,24 +9,28 @@
  *
  * 【分层】
  *   `host_protocol.*`  纯编解码（帧格式、累加和、解析器）
- *   `host.hpp/.cpp`    本类：协议执行器 —— 独占 `bsp_uart10`，把帧变成动作和应答
- *   `user/app/task/host_task.cpp`  只是个壳：`host.poll()` 里是阻塞收帧的主循环
+ *   `host.hpp/.cpp`    本类：协议执行器 —— 独占上位机串口（USART1），把帧变成动作和应答
+ *   `user/app/task/host_task.cpp`  只是个壳：`host.poll()` 里是事件驱动的收帧主循环
  *
  * 【本类管的三件事】
  *   1. 指令：CMD_VEL / CMD_VEL_TIME / CMD_MOVE / CMD_SERVO / ESTOP
  *   2. 仲裁：`ControlSource`（遥控器 CH5 写、本类读）
- *   3. 场地信息：出生点 1~4 / 安全区 1~2（按键改，改了才推送给上位机）
+ *   3. 场地信息：出生点 1~4 / 安全区 1=红 2=蓝（按键长按确认时直接推送）
  *
  * 【生效规则】
  *   - 只有 `ControlSource::HOST` 时速度类指令才执行，否则回 `RES_REJECTED`
- *   - 场地信息：**按键改了就发一次**（`_field_dirty`），其余时候只在 `PING` 查询时回复
- *   - 没有周期心跳、没有 IMU/MOTORS 周期上报
+ *   - 场地信息：**按键长按时直接发一帧**（`send_field_now()`，`send()` 支持多写者），
+ *     主循环不需要为它额外唤醒
+ *   - 没有周期心跳、没有周期遥测（没有 IMU / 电机状态上报）
  */
 
 #ifndef __HOST_HPP__
 #define __HOST_HPP__
 
 #include "host_protocol.hpp" // 帧格式与消息类型
+
+#include "FreeRTOS.h" // IWYU pragma: keep（TimerHandle_t）
+#include "timers.h"
 
 #include <stdint.h>
 
@@ -64,9 +68,8 @@ public:
   /** @brief 安全区 1 ↔ 2（按键短按调用）；只改本地值，不发送 */
   void toggle_zone();
 
-  /** @brief 把当前出生点/安全区推送给上位机（按键长按调用，下一轮 poll 发送） */
-  void push_field();
-
+  /** @brief 把当前出生点/安全区直接发给上位机（按键任务长按时调用，不经过主循环） */
+  void send_field_now();
   /** @brief 当前出生点 1~4 */
   uint8_t spawn_id() const;
 
@@ -82,30 +85,24 @@ public:
   /* ==================== */
 
 private:
-  /* ==================== 运动任务（CMD_MOVE 三段式） ==================== */
+  /* ==================== 运动任务（CMD_MOVE 直线开环） ==================== */
 
-  /** @brief 运动任务的阶段 */
+  /** @brief 运动任务（CMD_MOVE）的阶段 */
   enum class MovePhase : uint8_t
   {
     IDLE = 0, ///< 没有运动任务
-    TURN1,    ///< ① 原地转到"运动方向"
-    STRAIGHT, ///< ② 定速直行"距离 / 速度"那么久
-    TURN2,    ///< ③ 原地转到目标朝向
+    DRIVE,    ///< 按锁定的车体速度直线开，到时停车
   };
 
   /** @brief 当前运动任务的全部参数 */
   struct MotionJob
   {
-    MovePhase phase            = MovePhase::IDLE;
-    float     heading1         = 0.0f; ///< 阶段 ① 的目标航向 (rad)
-    float     heading2         = 0.0f; ///< 阶段 ③ 的目标航向 (rad)
-    float     vx_body          = 0.0f; ///< 直行时的车体 x 速度 (cm/s)
-    float     vy_body          = 0.0f; ///< 直行时的车体 y 速度 (cm/s)
-    uint32_t  straight_dur_ms  = 0U;   ///< 直行段时长
-    uint32_t  straight_stop_ms = 0U;   ///< 直行结束时刻 (ms)
-    uint32_t  turn_start_ms    = 0U;   ///< 当前转向段开始时刻 (ms)
-    uint8_t   cmd_type         = 0U;   ///< 原始指令类型（回 MOVE_DONE 用）
-    uint8_t   cmd_seq          = 0U;   ///< 原始指令序号
+    MovePhase phase    = MovePhase::IDLE;
+    float     vx_body  = 0.0f; ///< 车体 x 速度 (cm/s)
+    float     vy_body  = 0.0f; ///< 车体 y 速度 (cm/s)
+    uint32_t  stop_ms  = 0U;   ///< 结束时刻 (ms)
+    uint8_t   cmd_type = 0U;   ///< 原始指令类型（回 MOVE_DONE 用）
+    uint8_t   cmd_seq  = 0U;   ///< 原始指令序号
   };
 
   /** @brief 定时速度指令（CMD_VEL_TIME） */
@@ -121,8 +118,18 @@ private:
 
   /* ==================== 收 ==================== */
 
-  /** @brief 阻塞等串口数据（最多 HOST_WAIT_MS），把积压的字节全部解析掉 */
+  /** @brief 把收到的字节喂给解析器（凑出一帧就立即执行） */
+  void _feed(const uint8_t *data, size_t n);
+
+  /** @brief 非阻塞排空积压（timeout = 0，不等待） */
   void _drain_rx();
+
+  /**
+   * @brief 主循环这次该睡多久
+   * @return 到下一个计时任务（CMD_MOVE / CMD_VEL_TIME）的毫秒数；
+   *         没有任何计时任务时返回 `portMAX_DELAY`（一直睡，不空转）
+   */
+  uint32_t _wait_ms() const;
 
   /** @brief 按 TYPE 分派一帧 */
   void _handle(const host_proto::Frame &f);
@@ -132,7 +139,22 @@ private:
   void _on_cmd_move(const host_proto::Frame &f);
   void _on_cmd_servo(const host_proto::Frame &f);
   void _on_ping();
+  void _on_host_ack(const host_proto::Frame &f);
   void _on_estop(const host_proto::Frame &f);
+
+  /* ==================== */
+
+
+  /* ==================== 场地信息重发 ==================== */
+
+  /** @brief 立即发一帧 FIELD_STATUS */
+  void _send_field_once();
+
+  /** @brief 定时器回调：发下一帧，发满就停表 */
+  void _field_tick();
+
+  /** @brief 软件定时器的静态入口 */
+  static void _field_timer_cb(TimerHandle_t t);
 
   /* ==================== */
 
@@ -140,15 +162,21 @@ private:
   /* ==================== 发 ==================== */
 
   void _send_frame(uint8_t type, const uint8_t *payload, uint8_t len);
+
+  /** @brief 取下一个下行帧序号（主循环与按键任务都会发帧，用临界区保护） */
+  uint8_t _next_seq();
+
   void _send_ack(uint8_t acked_type, uint8_t acked_seq, uint8_t result);
-  void _send_hello();
+
   void _send_pong();
   void _send_state();
-  void _send_field();
   void _send_event(uint8_t code, uint8_t data);
 
   /** @brief 结束当前运动任务：回 MOVE_DONE（如有任务）+ 停车 */
   void _finish_job(uint8_t result);
+
+  /** @brief 中止正在跑的 CMD_VEL_TIME：有的话回一帧 MOVE_DONE(result)（含停车） */
+  void _abort_timed(uint8_t result);
 
   /* ==================== */
 
@@ -157,7 +185,6 @@ private:
 
   void _start_move_job(const host_proto::Frame &f);
   void _motion_step();
-  bool _turn_step(float target_rad, uint32_t now_ms);
 
   /* ==================== */
 
@@ -170,7 +197,7 @@ private:
   /** @brief CMD_VEL_TIME 到点 → 停车 + 回 MOVE_DONE */
   void _expire_timed();
 
-  /** @brief 控制源 / 场地信息变化时补发对应对帧（不是心跳） */
+  /** @brief 控制源 / 比赛信息变化时补发对应帧（不是心跳） */
   void _publish_changes();
 
   /* ==================== */
@@ -179,14 +206,17 @@ private:
   /* ==================== 状态 ==================== */
 
   host_proto::Parser _parser;        ///< 收帧解析器（跨轮保留半帧）
-  uint8_t            _tx_seq = 0U;   ///< 下行帧序号
+  volatile uint8_t   _tx_seq = 0U;   ///< 下行帧序号（两个任务共用）
   MotionJob          _job;           ///< 当前运动任务
   TimedDrive         _timed;         ///< 当前定时速度任务
 
   volatile ControlSource _source = ControlSource::RC; ///< 遥控器 CH5 写、本类读
   volatile uint8_t       _spawn  = 1U;                ///< 出生点（按键写）
   volatile uint8_t       _zone   = 1U;                ///< 安全区（按键写）
-  volatile bool          _field_dirty = false;        ///< 按键改过 → 下一轮推送一次
+
+  TimerHandle_t _field_timer = nullptr; ///< FIELD_STATUS 重发定时器（100 ms，自动重载）
+  uint8_t       _field_left  = 0U;      ///< 还要发几帧（发满 10 帧或收到确认就归零）
+  uint32_t      _field_next_ms = 0U;    ///< 下一帧的允许发送时刻（丢弃早到的回调）
 
   ControlSource _last_src = ControlSource::RC; ///< 用于检测控制源变化
 

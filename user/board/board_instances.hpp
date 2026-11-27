@@ -64,7 +64,6 @@
 #define ICBSP_CAN_INSTANCES(X) /* 无 */
 #define ICBSP_UART_INSTANCES(X) \
   X(bsp_uart1) \
-  X(bsp_uart2) \
   X(bsp_uart5) \
   X(bsp_uart8) \
   X(bsp_uart10)

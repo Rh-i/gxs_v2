@@ -77,7 +77,7 @@
 #include "device/actuator/device_servo.hpp"
 #include "device/motor/device_motor.hpp"
 #include "device/remote/device_r9ds.hpp"
-#include "device/sensor/device_wt102.hpp"
+#include "device/screen/iic_oled.hpp" // IicOled（I²C OLED）
 #include "main.h" // IWYU pragma: keep（GPIO 标签宏）
 #include "tim.h"
 #include "usart.h"
@@ -95,15 +95,13 @@ void board_init(void);
 // 需要释放资源时显式调 `deinit()`，不要写析构函数。
 
 // <ICBSP-GEN peripherals>
-/// USART1：**通信串口**（PB6/PB7，921600 8N1，DMA 收发，缓冲加大到 512）
-inline ICBSP_DMA_BUFFER(bsp_uart1) BspUartT<uart_mode::dma, 512, 512> bsp_uart1({.huart = &huart1, .mode = UartDir::TxRx, .baudrate = 921600U});
-/// USART2：WT102 陀螺仪（PA2/PA3，230400 8N1，DMA 只收）
-inline ICBSP_DMA_BUFFER(bsp_uart2) BspUartT<uart_mode::dma, 256, 128> bsp_uart2({.huart = &huart2, .mode = UartDir::RxOnly, .baudrate = 230400U});
+/// USART1：**上位机协议串口**（PB6/PB7，921600 8N1，DMA 收发；RX 2048 抗突发，TX 512 够用）
+inline ICBSP_DMA_BUFFER(bsp_uart1) BspUartT<uart_mode::dma, 2048, 512> bsp_uart1({.huart = &huart1, .mode = UartDir::TxRx, .baudrate = 921600U});
 /// UART5：R9DS 遥控（PB5/PC12，SBUS：100000、8 数据位 + 偶校验 + 2 停止位，DMA 只收）
 inline ICBSP_DMA_BUFFER(bsp_uart5) BspUartT<uart_mode::dma, 256, 128> bsp_uart5({.huart = &huart5, .mode = UartDir::RxOnly, .baudrate = 100000U});
 /// UART8：**调试打印串口**（PE0/PE1，921600 8N1，DMA 收发；也承载 VOFA JustFloat 波形；TX 缓冲 512 防帧被截断）
 inline ICBSP_DMA_BUFFER(bsp_uart8) BspUartT<uart_mode::dma, 128, 512> bsp_uart8({.huart = &huart8, .mode = UartDir::TxRx, .baudrate = 921600U});
-/// USART10：**上下位机通讯串口**（PE2/PE3，921600 8N1，DMA 收发，缓冲加大到 512）
+/// USART10：预留（PE2/PE3，921600 8N1；上下位机已改走 USART1）
 inline ICBSP_DMA_BUFFER(bsp_uart10) BspUartT<uart_mode::dma, 512, 512> bsp_uart10({.huart = &huart10, .mode = UartDir::TxRx, .baudrate = 921600U});
 /// TIM2_CH3 / CH4：电机1 H 桥（PB10/PB11，10 kHz）
 inline BspPwm bsp_pwm_tim2_ch3({.htim = &htim2, .channel = TIM_CHANNEL_3, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
@@ -123,10 +121,10 @@ inline BspEncoder bsp_encoder_tim3({.htim = &htim3, .invert = false});
 inline BspEncoder bsp_encoder_tim1({.htim = &htim1, .invert = false});
 /// TIM4：编码器（PD12/PD13）→ 电机3
 inline BspEncoder bsp_encoder_tim4({.htim = &htim4, .invert = false});
-/// KEY1：PE4，GPIO 输入（板上已外部上拉），按下为低。key_task 按 200 ms 轮询：消抖 1×=200 ms、长按 5×=1 s
-inline BspKey key1({.port = KEY1_GPIO_Port, .pin = KEY1_Pin, .active_low = true, .debounce_cnt = 1U, .long_press_cnt = 5U});
+/// KEY1：PE4，GPIO 输入（板上已外部上拉），按下为低。key_task 按 200 ms 轮询：消抖 1×=200 ms、长按 3×=600 ms
+inline BspKey key1({.port = KEY1_GPIO_Port, .pin = KEY1_Pin, .active_low = true, .debounce_cnt = 1U, .long_press_cnt = 3U});
 /// KEY2：PE5，参数同 key1（外部上拉）
-inline BspKey key2({.port = KEY2_GPIO_Port, .pin = KEY2_Pin, .active_low = true, .debounce_cnt = 1U, .long_press_cnt = 5U});
+inline BspKey key2({.port = KEY2_GPIO_Port, .pin = KEY2_Pin, .active_low = true, .debounce_cnt = 1U, .long_press_cnt = 3U});
 /// LED1：PC13，GPIO 输出（CubeMX 里初始电平 Reset；板上低电平点亮时也就对应“亮”）
 inline BspGpio led1({.port = LED1_GPIO_Port, .pin = LED1_Pin});
 
@@ -155,10 +153,11 @@ extern DeviceMotor motor3;
 extern DeviceServo servo1;
 /// 舵机2：TIM5_CH2（270°，500~2500 µs）
 extern DeviceServo servo2;
-/// WT102 陀螺仪：USART2（230400）
-extern DeviceWt102T<decltype(bsp_uart2)> wt102;
 /// R9DS 遥控：UART5（SBUS）
 extern DeviceR9dsT<decltype(bsp_uart5)> r9ds;
+/// OLED：I²C1（PB8=SCL / PB9=SDA），SSD1306 128×64，地址 0x3C
+/// @note 初始化失败（没接屏/接线错）只静默继续，不影响整机；由 oled_task 低速重试。
+extern IicOled oled;
 
 /* ==================== */
 

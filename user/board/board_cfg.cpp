@@ -15,7 +15,7 @@
  *   失败就地停机，`fault_record` 会记下**代码行号**，
  *   一眼能看出是哪一路；继续跑下去只会在半初始化的系统上产生更难查的现象。
  *   想改成“降级运行”也可以，但那样必须在 sys_state 里记错误：
- *     `if (bsp_uart2.init() != Status::OK) { (void)sys_state.error(Status::IO_ERROR); }`
+ *     `if (bsp_uart5.init() != Status::OK) { (void)sys_state.error(Status::IO_ERROR); }`
  *   这样 `system_start()` 才知道有子系统挂了（它的 waiting 逻辑依赖 sys_state）。
  *
  * 【顺序有讲究（本文件的顺序不能乱）】
@@ -29,6 +29,8 @@
 
 #include "board_cfg.hpp"
 #include "service/system/fault_record.hpp" // ICBSP_CHECK
+
+#include "i2c.h" // hi2c1（OLED）
 
 #include "FreeRTOS.h" // IWYU pragma: keep (configASSERT)
 
@@ -97,11 +99,11 @@ DeviceServo servo1({.pwm = &bsp_pwm_tim5_ch1, .pulse_min_us = 500.0f, .pulse_max
 /// 舵机2：TIM5_CH2，参数同 servo1
 DeviceServo servo2({.pwm = &bsp_pwm_tim5_ch2, .pulse_min_us = 500.0f, .pulse_max_us = 2500.0f, .range_deg = 270.0f});
 
-/// WT102 陀螺仪：USART2，230400 8N1
-DeviceWt102T<decltype(bsp_uart2)> wt102(bsp_uart2);
-
 /// R9DS 遥控接收机：UART5，SBUS
 DeviceR9dsT<decltype(bsp_uart5)> r9ds(bsp_uart5);
+
+/// OLED：I²C1，SSD1306 128×64（显存 1152 B，放静态区）
+IicOled oled;
 
 /* ==================== */
 
@@ -113,11 +115,10 @@ void board_init(void)
 
   // ② 总线与外设：失败会停在对应行号，fault_record 里能看到是哪一路。
   // <ICBSP-GEN init>
-  ICBSP_CHECK(bsp_uart1.init() == Status::OK);        // USART1  通信 921600
-  ICBSP_CHECK(bsp_uart2.init() == Status::OK);        // USART2  WT102 230400
+  ICBSP_CHECK(bsp_uart1.init() == Status::OK);        // USART1  上位机通信 921600
   ICBSP_CHECK(bsp_uart5.init() == Status::OK);        // UART5   R9DS SBUS 100000 8E2
   ICBSP_CHECK(bsp_uart8.init() == Status::OK);        // UART8   调试打印 + VOFA 921600
-  ICBSP_CHECK(bsp_uart10.init() == Status::OK);       // USART10 上下位机通信 921600
+  ICBSP_CHECK(bsp_uart10.init() == Status::OK);       // USART10 预留（现上下位机走 USART1）
   ICBSP_CHECK(bsp_pwm_tim2_ch3.init() == Status::OK); // 电机1 H 桥
   ICBSP_CHECK(bsp_pwm_tim2_ch4.init() == Status::OK);
   ICBSP_CHECK(bsp_pwm_tim12_ch1.init() == Status::OK); // 电机2 H 桥
@@ -143,8 +144,10 @@ void board_init(void)
   // 舵机上电默认中位：这里只登记目标，真正的 PWM 由 servo_task 的周期 update() 写入
   servo1.set_angle(SERVO_MID_DEG);
   servo2.set_angle(SERVO_MID_DEG);
-  ICBSP_CHECK(wt102.init() == Status::OK); // USART2
   ICBSP_CHECK(r9ds.init() == Status::OK);  // UART5
+
+  // ④ 可选外设：OLED（I²C1）。没接屏/接线错时只静默继续，由 oled_task 低频重试，不影响整机。
+  (void)oled.init(&hi2c1, 0x3C, IicOled::Rotation::ROT_0);
 }
 
 /* ==================== */

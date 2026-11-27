@@ -98,6 +98,7 @@ extern "C" void app_init(void)
   //    任务入口开头都先调 sys_state.wait_running()（原因见文件头）。
   //    优先级必须低于库任务（sys 默认 configMAX_PRIORITIES - 4，见 hardware_config.h）：
   //    osPriorityNormal（24）、osPriorityHigh（40）都可以。
+  //    业务任务里的排序：motor(High1=41) > host(High=40) > key/servo/remote(24) > oled(Low)。
   //
   //    按键任务：200 ms 轮询 key1 / key2（独占它们的 update()）。
   ICBSP_CHECK(xTaskCreate(key_task, "key", 512, NULL, osPriorityNormal, NULL) == pdPASS);
@@ -105,8 +106,8 @@ extern "C" void app_init(void)
   //    舵机任务：50 Hz 推进 servo1 / servo2（独占它们的 update()，默认中位 135°）。
   ICBSP_CHECK(xTaskCreate(servo_task, "servo", 256, NULL, osPriorityNormal, NULL) == pdPASS);
 
-  //    上下位机任务：100 Hz 收发协议帧（独占 bsp_uart10，921600）。
-  ICBSP_CHECK(xTaskCreate(host_task, "host", 1024, NULL, osPriorityNormal, NULL) == pdPASS);
+  //    上下位机任务：事件驱动（有帧就处理，空闲睡 portMAX_DELAY），独占 USART1，921600。
+  ICBSP_CHECK(xTaskCreate(host_task, "host", 1024, NULL, osPriorityHigh, NULL) == pdPASS);
 
   //    电机任务：1 kHz 速度环，三台电机唯一的 update() 调用者。
   ICBSP_CHECK(xTaskCreate(motor_task, "motor", 1024, NULL, osPriorityHigh1, NULL) == pdPASS);
@@ -114,15 +115,14 @@ extern "C" void app_init(void)
   //    遥控任务：100 Hz，读 R9DS → 底盘目标（独占 r9ds.update()）。
   ICBSP_CHECK(xTaskCreate(remote_task, "remote", 1024, NULL, osPriorityNormal, NULL) == pdPASS);
 
-  //    陀螺仪任务：500 Hz 读 WT102（独占 wt102.update()），小陀螺模式反旋用。
-  ICBSP_CHECK(xTaskCreate(imu_task, "imu", 1024, NULL, osPriorityHigh, NULL) == pdPASS);
-
   //    电机监控任务：1 kHz 把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat
   //    发给 VOFA+（UART8，921600）。观察对象：motor_monitor_index（0/1/2 → motor1/2/3）
   //    测试波形：motor_test_wave（0 = 关，1 = 方波，2 = 正弦，4 = 开环 ±50% 占空比）
   //    注意：非 0 时 remote_task 会让出底盘，遥控/上位机不可用
   // ICBSP_CHECK(xTaskCreate(motor_monitor_task, "mon", 512, NULL, osPriorityNormal, NULL) == pdPASS);
-
+  //    OLED 场地页任务：显示出生点与安全区颜色，按键后刷新（I2C1，最低优先级）
+  ICBSP_CHECK(xTaskCreate(oled_task, "oled", 512, NULL, osPriorityLow, NULL) == pdPASS);
+  
   // 5. 放行：置运行位，放行所有在 wait_running() 上等待的任务。
   //    初始化阶段有失败记录（例如 CAN 节点注册失败、外设 init() 失败）时，
   //    这里会断言停机，fault_record 记下本行。

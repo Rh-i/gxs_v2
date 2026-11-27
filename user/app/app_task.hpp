@@ -27,7 +27,7 @@ extern "C"
   void key_task(void *argument);
 
   /**
-   * @brief 上下位机通讯任务：USART10（921600）收指令 + 周期上报（独占 bsp_uart10）
+   * @brief 上下位机通讯任务：USART1（921600）收指令 + 周期上报（独占上位机串口）
    * @param argument 任务参数（未使用，NULL）
    * @note 只在遥控器 CH5 拨到上位机挡（`ControlSource::HOST`）时才把速度下给底盘。
    *       协议说明见 `user/module/上位机协议.md`。
@@ -59,12 +59,12 @@ extern "C"
   void remote_task(void *argument);
 
   /**
-   * @brief 陀螺仪任务：500 Hz 读 WT102（USART2），刷新 Z 轴三个量的最近两帧
+   * @brief OLED 场地页任务：显示出生点与安全区颜色，按键后刷新，空闲不刷屏
    * @param argument 任务参数（未使用，NULL）
-   * @note 数据直接从 `wt102.get_z_newest()` / `get_z_previous()` 取，
-   *       单位换算（°/s、°、g）由用的人做。本任务独占 `wt102.update()`。
+   * @note 一整帧 I²C 刷新是阻塞的（约 24~26 ms @400 kHz），所以本任务用最低优先级。
+   *       OLED 实例定义在 `board_cfg.cpp`；没接屏时每周期重试 init，不影响其它任务。
    */
-  void imu_task(void *argument);
+  void oled_task(void *argument);
 
   /**
    * @brief 电机监控任务：1 kHz 把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat 发给 VOFA+

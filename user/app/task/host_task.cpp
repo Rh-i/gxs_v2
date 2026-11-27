@@ -7,7 +7,7 @@
  *       收帧 / 指令执行 / 控制源仲裁 / 场地信息 / CMD_MOVE 状态机。
  *       本文件只负责"库初始化失败就不跑"和"把任务时间让给它"。
  *
- * @note `poll()` 内部是阻塞在 `bsp_uart10.receive()` 上的死循环，不会返回。
+ * @note `poll()` 内部是阻塞在 `host_uart.receive()` 上的死循环，不会返回。
  */
 
 #include "app_task.hpp"

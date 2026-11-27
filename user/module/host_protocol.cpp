@@ -9,7 +9,7 @@ namespace host_proto
 /* ==================== 编解码 ==================== */
 
 /**
- * @brief 组帧：AA 55 | VER | TYPE | SEQ | LEN | payload | SUM
+ * @brief 组帧：AA 55 | TYPE | SEQ | LEN | payload | SUM | 0D 0A
  * @return 实际字节数；载荷超长返回 0
  */
 size_t pack(uint8_t *out, uint8_t type, uint8_t seq, const uint8_t *payload, uint8_t len)
@@ -23,25 +23,26 @@ size_t pack(uint8_t *out, uint8_t type, uint8_t seq, const uint8_t *payload, uin
 
   out[0] = SOF1;
   out[1] = SOF2;
-  out[2] = VER;
-  out[3] = type;
-  out[4] = seq;
-  out[5] = len;
+  out[2] = type;
+  out[3] = seq;
+  out[4] = len;
 
   if (len > 0U)
   {
-    memcpy(&out[6], payload, len);
+    memcpy(&out[5], payload, len);
   }
 
-  // 累加和：从 VER 起到载荷末尾（不含两个帧头字节）
+  // 累加和：从 TYPE 起到载荷末尾（不含两个帧头字节）
   uint8_t sum = 0U;
-  for (size_t i = 2U; i < (6U + len); ++i)
+  for (size_t i = 2U; i < (5U + len); ++i)
   {
     sum = static_cast<uint8_t>(sum + out[i]);
   }
-  out[6U + len] = sum;
+  out[5U + len] = sum;
+  out[6U + len] = EOF1;
+  out[7U + len] = EOF2;
 
-  return 7U + len;
+  return 8U + len;
 }
 
 void put_i16(uint8_t *p, int16_t v)
@@ -132,29 +133,29 @@ bool Parser::push(uint8_t byte, Frame *out)
     }
 
     // 2. 帧头 + 头部字段还没凑齐
-    if (_n < 6U)
+    if (_n < 5U)
       return false;
 
-    // 3. 版本 / 长度检查
-    const uint8_t len = _buf[5];
-    if ((_buf[2] != VER) || (len > MAX_PAYLOAD))
+    // 3. 长度检查
+    const uint8_t len = _buf[4];
+    if (len > MAX_PAYLOAD)
     {
       _drop(1U);
       continue;
     }
 
-    const size_t total = 7U + len; // 头部 6 + 载荷 + 累加和 1
+    const size_t total = 8U + len; // 头部 5 + 载荷 + 累加和 1 + 帧尾 2
     if (_n < total)
       return false;
 
-    // 4. 累加和
+    // 4. 累加和：从 TYPE 起到载荷末尾
     uint8_t sum = 0U;
-    for (size_t i = 2U; i < (6U + len); ++i)
+    for (size_t i = 2U; i < (5U + len); ++i)
     {
       sum = static_cast<uint8_t>(sum + _buf[i]);
     }
 
-    if (sum != _buf[6U + len])
+    if ((sum != _buf[5U + len]) || (_buf[6U + len] != EOF1) || (_buf[7U + len] != EOF2))
     {
       _drop(1U);
       continue;
@@ -163,12 +164,12 @@ bool Parser::push(uint8_t byte, Frame *out)
     // 5. 成功：填帧并移走这一帧
     if (out != nullptr)
     {
-      out->type = _buf[3];
-      out->seq  = _buf[4];
+      out->type = _buf[2];
+      out->seq  = _buf[3];
       out->len  = len;
       if (len > 0U)
       {
-        memcpy(out->payload, &_buf[6], len);
+        memcpy(out->payload, &_buf[5], len);
       }
     }
     _drop(total);
