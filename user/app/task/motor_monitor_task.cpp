@@ -1,32 +1,27 @@
 /**
  * @file motor_monitor_task.cpp
- * @brief 电机监控任务：把「一台（可切换）电机」的目标 / 反馈 / PID 输出按 JustFloat 发给 VOFA+
+ * @brief 电机监控任务：把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat 发给 VOFA+
  * @date 2026-11-24
  *
- * @note 观察哪一台由 `motor_monitor_index` 决定，运行中可改，下一拍生效：
- *         - 调试器：`set var motor_monitor_index = 1`
- *         - EmberProbe / Live Watch：直接写变量 `motor_monitor_index`
- *       取值 0/1/2 = motor1/2/3，**≥ 3 = 不发**（停掉波形）。
+ * @note 观察哪台由 `motor_monitor_index` 决定（0/1/2 → motor1/2/3，≥ 3 停发），运行中可改，
+ *       下一拍生效：调试器 `set var motor_monitor_index = 1`，或 Live Watch 直接写。
  *
- * @note 自带测试波形（同一台电机，运行中可改 `motor_test_wave`）：
- *         0 = 关（底盘照常听遥控 / 上位机）
- *         1 = 方波 ±50 cm/s，周期 2 s（1 s 正 / 1 s 负）
- *         2 = 正弦波 ±50 cm/s，周期 2 s，与方波同相
- *         4 = **开环档**：绕过 PID，直接给 ±50% 占空比（同相位），用来对比正反向驱动/被控对象是否对称
- *       测试档非 0 时 `remote_task` 会让出底盘控制权（否则它 100 Hz 的 chassis.stop()
- *       会把目标冲掉）—— **调完必须改回 0 才能用遥控器/上位机**；测试时也别同时发上位机运动指令。
- *       切回 0 或换台时，本任务会把上一台 `stop()` 掉，不留残余目标。
+ * @note 自带测试波形 `motor_test`（运行中可改）：
+ *         0 = 关；
+ *         1 = 方波 ±50 cm/s（周期 2 s）；2 = 正弦 ±50 cm/s（同相）；
+ *         4 = 开环档，绕过 PID 直接给 ±50% 占空比，用来对比正反向驱动 / 被控对象是否对称。
+ *       本任务只驱动电机，不碰遥控 / 上位机；测试时自己别同时让它们下发运动指令。
+ *       切回 0 或换台时会把上一台 `stop()` 掉，不留残余目标。
  *
- * @note 通道顺序（VOFA+ JustFloat，**4 通道**，帧尾 00 00 80 7F）：
- *         CH1 = 目标速度 (cm/s)、CH2 = 实测速度 (cm/s)、CH3 = PID 输出（占空比 %，带符号）、
- *         CH4 = 编码器原始计数（库内 read_raw()，int32 转 float，不乘任何换算）
- *       开环档（wave = 4）下没有 PID 数据：CH1/CH3 报当前开环占空比，CH2 仍是实测速度。
- *       单帧 20 B，1 kHz 下 20 kB/s。
+ * @note JustFloat 4 通道（帧尾 00 00 80 7F，单帧 20 B，1 kHz ≈ 20 kB/s）：
+ *         CH1 目标速度 (cm/s)、CH2 实测速度 (cm/s)、CH3 PID 输出 (% 带符号)、
+ *         CH4 编码器原始计数（库内 read_raw()，不乘任何换算）。
+ *       开环档（wave = 4）下 CH1/CH3 报当前开环占空比，CH2 仍是实测速度。
  *
- * @note 走 **UART8**（921600，同时承载调试打印）：JustFloat 是二进制流，
- *       文本日志（按键/sys 报告）混进来会让 VOFA+ 解析出零星跳变；要完全干净就把打印口分开。
+ * @note 走 UART8（921600，与调试打印共用）：JustFloat 是二进制流，文本日志混进来会让
+ *       VOFA+ 解析出零星跳变，要完全干净得把打印口分开。
  *
- * @note 本任务不调 update()（PWM 写入权在 1 kHz 的 motor_task），只写目标值/开环占空比和读查询接口。
+ * @note 本任务不调 update()（PWM 写入权在 1 kHz 的 motor_task），只写目标值 / 开环占空比和读查询接口。
  */
 
 #include "app_task.hpp"
@@ -48,9 +43,8 @@ constexpr uint32_t MOTOR_MONITOR_PERIOD_MS = 1U;
 
 /** @brief 测试波形幅值 (cm/s)：方波与正弦共用 */
 constexpr float MOTOR_TEST_AMP_CM_S = 50.0f;
-/** @brief 测试波形周期 (s)：方波与正弦共用（方波 = 上半周 +50 / 下半周 −50，与正弦同相） */
+/** @brief 测试波形周期 (s)：方波上半周 +50 / 下半周 −50，与正弦同相 */
 constexpr float MOTOR_TEST_PERIOD_S = 2.0f;
-
 /** @brief 开环测试档（wave = 4）的占空比幅值 (%)：同占空比下对比正反向驱动是否对称 */
 constexpr float MOTOR_TEST_OPEN_DUTY_PCT = 50.0f;
 
@@ -59,44 +53,31 @@ constexpr float PI_F = 3.14159265f;
 /** @brief 监控对象下标：0/1/2 → motor1/2/3；≥ 3 表示停发。运行时读写，故 volatile */
 volatile uint8_t motor_monitor_index = 2U;
 
-
-/** @brief 测试波形：0 = 关，1 = 方波，2 = 正弦，4 = 开环。运行时读写，故 volatile
- *  @note **必须保持 0 才能用遥控器 / 上位机**：非 0 时 remote_task 会完全让出底盘控制权（见那里的保护逻辑）。 */
-volatile uint8_t motor_test_wave = 0U;
+/** @brief 测试波形：0 = 关，1 = 方波，2 = 正弦，4 = 开环。运行时读写，故 volatile */
+volatile uint8_t motor_test = 0U;
 
 /** @brief 下标 → 实例；顺序与 motor_monitor_index 一致 */
 static DeviceMotor *const motor_monitor_list[] = {&motor1, &motor2, &motor3};
-
 constexpr uint8_t MOTOR_MONITOR_COUNT = static_cast<uint8_t>(sizeof(motor_monitor_list) / sizeof(motor_monitor_list[0]));
 
 
-/** @brief 当前测试相位 (rad)：用 DWT 绝对时间，先对周期取余，回绕安全 */
-static float test_phase_rad(void)
+/** @brief 这一拍测试档要写的值：1 方波 / 2 正弦 → 目标速度 (cm/s)，4 → 开环占空比 (%) */
+static float test_value(uint8_t wave)
 {
-  const float t = static_cast<float>(bsp_dwt.get_time_s());
+  // 相位用 DWT 绝对时间，先对周期取余，避免 t 变大后 float 精度下降
+  const float t     = static_cast<float>(bsp_dwt.get_time_s());
+  const float phase = (2.0f * PI_F) * (t - MOTOR_TEST_PERIOD_S * static_cast<float>(static_cast<int32_t>(t / MOTOR_TEST_PERIOD_S))) / MOTOR_TEST_PERIOD_S;
+  const float s     = sinf(phase);
 
-  // 先对周期取余，避免 t 变大后 float 精度下降（t/2 超过 1e7 后才开始丢小数）
-  float phase = t - (MOTOR_TEST_PERIOD_S * static_cast<float>(static_cast<int32_t>(t / MOTOR_TEST_PERIOD_S)));
-  return (2.0f * PI_F) * phase / MOTOR_TEST_PERIOD_S;
-}
-
-/** @brief 按 motor_test_wave 算这一拍的目标速度 (cm/s) */
-static float test_target(uint8_t wave)
-{
-  const float phase = test_phase_rad();
-
+  if (wave == 4U)
+  {
+    return (s >= 0.0f) ? MOTOR_TEST_OPEN_DUTY_PCT : -MOTOR_TEST_OPEN_DUTY_PCT;
+  }
   if (wave == 1U)
   {
-    return (sinf(phase) >= 0.0f) ? MOTOR_TEST_AMP_CM_S : -MOTOR_TEST_AMP_CM_S;
+    return (s >= 0.0f) ? MOTOR_TEST_AMP_CM_S : -MOTOR_TEST_AMP_CM_S;
   }
-
-  return MOTOR_TEST_AMP_CM_S * sinf(phase);
-}
-
-/** @brief 开环测试档：按同一相位给 ±占空比（不经过 PID） */
-static float test_open_duty(void)
-{
-  return (sinf(test_phase_rad()) >= 0.0f) ? MOTOR_TEST_OPEN_DUTY_PCT : -MOTOR_TEST_OPEN_DUTY_PCT;
+  return MOTOR_TEST_AMP_CM_S * s;
 }
 
 
@@ -110,9 +91,8 @@ extern "C" void motor_monitor_task(void *argument)
 
   for (;;)
   {
-    const uint8_t idx  = motor_monitor_index;
-    const uint8_t wave = motor_test_wave;
-
+    const uint8_t       idx   = motor_monitor_index;
+    const uint8_t       wave  = motor_test;
     DeviceMotor *const motor = (idx < MOTOR_MONITOR_COUNT) ? motor_monitor_list[idx] : nullptr;
 
     if ((motor != nullptr) && (wave != 0U)) // 测试波形：写目标，闭环仍由 motor_task 推进
@@ -122,13 +102,15 @@ extern "C" void motor_monitor_task(void *argument)
         prev_driven->stop(); // 换台：先把上一台停住，不留残余目标
       }
       prev_driven = motor;
+
+      const float v = test_value(wave);
       if (wave == 4U)
       {
-        motor->set_duty_open(test_open_duty()); // 开环：绕过 PID，直接给占空比
+        motor->set_duty_open(v); // 开环：绕过 PID，直接给占空比
       }
       else
       {
-        motor->set_speed(test_target(wave));
+        motor->set_speed(v);
       }
     }
     else if (prev_driven != nullptr)
@@ -139,13 +121,12 @@ extern "C" void motor_monitor_task(void *argument)
 
     if (motor != nullptr) // ≥ 3：停发
     {
-      // 库直接给 4 通道 JustFloat（目标 / 反馈 / PID 输出 / 编码器原始计数），整帧 20 B，
-      // 入队后由 DMA 异步发出去（超时 1 ms，丢帧不拖住 1 kHz 节拍）。
-      uint8_t      frame[20];
-      const size_t len = motor->get_pid_frame(frame, DeviceMotor::PID_ALL);
-      if (len == 20U)
+      // 4 通道 JustFloat（目标 / 反馈 / PID 输出 / 编码器原始计数），整帧 20 B，
+      // 入队后由 DMA 异步发出（超时 1 ms，丢帧不拖住 1 kHz 节拍）。
+      uint8_t frame[20];
+      if (motor->get_pid_frame(frame, DeviceMotor::PID_ALL) == sizeof(frame))
       {
-        (void)bsp_uart8.send(frame, len, 1U);
+        (void)bsp_uart8.send(frame, sizeof(frame), 1U);
       }
     }
 

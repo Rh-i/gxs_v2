@@ -2,7 +2,7 @@
  * @file app_task.hpp
  * @brief 应用层任务声明 + 任务间共享数据
  *
- * @details key / motor / remote / imu 由 app_init() 统一创建。
+ * @details 各任务入口在此声明，由 app_init() 统一创建。
  */
 
 #ifndef __APP_TASK_HPP__
@@ -19,7 +19,7 @@ extern "C"
 #endif
 
   /**
-   * @brief 按键任务：50 ms 轮询 key1 / key2，把短按/长按事件打到调试串口
+   * @brief 按键任务：50 ms 轮询 key1 / key2，短按切出生点/安全区，长按推送给上位机
    * @param argument 任务参数（未使用，NULL）
    * @note 轮询周期与 board_cfg.hpp 里 debounce_cnt / long_press_cnt 配套（100 ms 消抖 / 500 ms 长按）。
    *       本任务独占 key1 / key2 的 update()。
@@ -30,7 +30,7 @@ extern "C"
    * @brief 上下位机通讯任务：USART1（921600）收指令 + 周期上报（独占上位机串口）
    * @param argument 任务参数（未使用，NULL）
    * @note 只在遥控器 CH5 拨到上位机挡（`ControlSource::HOST`）时才把速度下给底盘。
-   *       协议说明见 `user/module/上位机协议.md`。
+   *       协议说明见 `user/docs/上位机协议.md`。
    */
   void host_task(void *argument);
 
@@ -53,16 +53,16 @@ extern "C"
   /**
    * @brief 遥控任务：R9DS 通道 → 底盘速度（100 Hz）
    * @param argument 任务参数（未使用，NULL）
-   * @note CH3 前后、CH4 平移、CH1 自旋；CH5 三挡：+100 自动（接口暂留）/ 0 停车 / -100 遥控。
+   * @note CH3 前后、CH4 平移、CH1 自旋；CH5 三挡：+100 上位机 / 0 停车 / -100 遥控。
    *       失联或非遥控挡一律制动。本任务独占 r9ds.update()。
    */
   void remote_task(void *argument);
 
   /**
-   * @brief OLED 场地页任务：显示出生点与安全区颜色，按键后刷新，空闲不刷屏
+   * @brief OLED 场地页任务：只给 40 ms 节拍，画面与刷屏判断在 `module/field_page`
    * @param argument 任务参数（未使用，NULL）
    * @note 一整帧 I²C 刷新是阻塞的（约 24~26 ms @400 kHz），所以本任务用最低优先级。
-   *       OLED 实例定义在 `board_cfg.cpp`；没接屏时每周期重试 init，不影响其它任务。
+   *       OLED 实例定义在 `board_cfg.cpp`；没接屏时每 5 s 重试 init，不影响其它任务。
    */
   void oled_task(void *argument);
 
@@ -71,8 +71,8 @@ extern "C"
    * @param argument 任务参数（未使用，NULL）
    * @note 观察对象是全局变量 `motor_monitor_index`（0/1/2 → motor1/2/3，≥ 3 = 停发），
    *       调试器或 EmberProbe 写它即可切换，无需重新烧录。
-   *       测试波形同受 `motor_test_wave` 控制（0 = 关，1 = 方波，2 = 正弦，±50 cm/s、2 s，
-   *       4 = 开环固定 ±50% 占空比）；**非 0 时遥控/上位机被屏蔽，调完改回 0**。
+   *       测试波形同受 `motor_test` 控制（0 = 关，1 = 方波，2 = 正弦，±50 cm/s、2 s，
+   *       4 = 开环固定 ±50% 占空比）。
    *       波形走 UART8（921600，与调试打印同口）。
    */
   void motor_monitor_task(void *argument);
@@ -82,13 +82,14 @@ extern "C"
 #endif
 
 /* ==================== */
-/* 运行时开关（调试器 / EmberProbe 直接写，无需重新烧录） */
+
+/* ==================== 运行时开关（调试器 / EmberProbe 直接写，无需重新烧录） ==================== */
 
 /** @brief VOFA 观察（也是测试波形驱动）的电机：0/1/2 → motor1/2/3，≥ 3 = 停发 */
 extern volatile uint8_t motor_monitor_index;
 
-/** @brief 电机测试波形：0 = 关（底盘听遥控/上位机），1 = 方波 ±50 cm/s，2 = 正弦 50 cm/s / 2 s */
-extern volatile uint8_t motor_test_wave;
+/** @brief 电机测试波形：0 = 关，1 = 方波 ±50 cm/s / 2 s，2 = 正弦 ±50 cm/s / 2 s，4 = 开环 ±50% */
+extern volatile uint8_t motor_test;
 
 /* ==================== */
 

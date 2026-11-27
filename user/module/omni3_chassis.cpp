@@ -68,7 +68,7 @@ void Omni3Chassis::stop()
   }
 }
 
-/** @brief 自转占掉 R·|ω| 之后，平移还能用多少 (cm/s) */
+/** @brief 自转占掉 R·|ω| 之后，平移还能用多少 (cm/s) 小陀螺补偿 */
 float Omni3Chassis::translation_budget(float wz_rad_s) const
 {
   if (wz_rad_s < 0.0f)

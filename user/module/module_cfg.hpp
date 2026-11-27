@@ -14,6 +14,7 @@
 #ifndef __MODULE_CFG_HPP__
 #define __MODULE_CFG_HPP__
 
+#include "field_page.hpp"
 #include "host.hpp"
 #include "omni3_chassis.hpp"
 
@@ -35,15 +36,7 @@ void module_init(void);
 
 extern Omni3Chassis chassis; ///< 三全向轮底盘（M1 右前 / M2 左前 / M3 正后）
 extern Host         host;    ///< 上位机协议执行器（定义见 module_cfg.cpp）
-
-/**
- * @brief 场地页的按键共享状态（key_task 写，oled_task 读）
- * @note 长按确认后屏上显示 1 s 的 `已发送`。
- */
-namespace field_ui
-{
-extern volatile uint32_t sent_ms; ///< 0 = 还没发过；否则 = 上次确认时刻 (ms)
-}
+extern FieldPage    field_page; ///< 场地页（画面 + 刷屏判断，oled_task 只给 40 ms 节拍）
 
 /* ==================== */
 #endif // __MODULE_CFG_HPP__

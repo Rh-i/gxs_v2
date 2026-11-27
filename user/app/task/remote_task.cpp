@@ -31,16 +31,16 @@
 #include <stdint.h>
 
 
-constexpr uint32_t REMOTE_PERIOD_MS  = 10U;    // 100 Hz：摇杆变化远慢于此，再快只是重复写目标
+constexpr uint32_t REMOTE_PERIOD_MS  = 20U;    // 50 Hz：摇杆变化远慢于此，再快只是重复写目标
 constexpr float    REMOTE_V_MAX_CM_S = 120.0f; // 摇杆打满 = 120 cm/s
 // 自转满杆取「轮速与平移满杆一致」：ω_max = V_MAX / R = 120 / 10，R 见 module_cfg.cpp
 constexpr float   REMOTE_W_MAX_RAD_S = 12.0f;
 constexpr int16_t STICK_DEADBAND     = 5; // 遥控器语义值 ±100 的 5%，滤掉中位零漂
 
 /** @brief 舵机映射：旋钮 0 = 中位，±100 打满 270° 行程 */
-constexpr float SERVO_MID_DEG        = 135.0f; ///< 270° 舵机中位
-constexpr float SERVO_HALF_RANGE_DEG = 135.0f; ///< 半行程：±100 → ±135°
-constexpr int16_t KNOB_DEADBAND      = 3;      ///< 旋钮回中的零漂死区
+constexpr float   SERVO_MID_DEG        = 135.0f; ///< 270° 舵机中位
+constexpr float   SERVO_HALF_RANGE_DEG = 135.0f; ///< 半行程：±100 → ±135°
+constexpr int16_t KNOB_DEADBAND        = 3;      ///< 旋钮回中的零漂死区
 
 
 /** @brief 摇杆 → -1.0~+1.0，中位死区内直接给 0 */
@@ -82,15 +82,6 @@ extern "C" void remote_task(void *argument)
   {
     r9ds.update(); // 本任务是该串口唯一的接收消费者
 
-    // 电机测试进行中（motor_test_wave ≠ 0 且确实有电机在测）：本任务不碰底盘，否则这里的
-    // chassis.stop() 会以 100 Hz 把 motor_monitor_task 写进去的测试目标 / 开环占空比冲掉。
-    // 注意 motor_monitor_index ≥ 3 时监控任务不驱动任何电机，此时不应屏蔽遥控。
-    if ((motor_test_wave != 0U) && (motor_monitor_index < 3U))
-    {
-      vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(REMOTE_PERIOD_MS));
-      continue;
-    }
-
     // 遥控器关掉 / 拔线 / 连续丢帧：**控制权交给上位机**（上位机不发指令时车就保持停着）
     if (!r9ds.is_online())
     {
@@ -107,7 +98,7 @@ extern "C" void remote_task(void *argument)
     const auto  &rc   = r9ds.get_rc();
     const int8_t mode = static_cast<int8_t>(rc.switch_c); // -1 遥控 / 0 强制停车 / +1 上位机
 
-    // 控制源仲裁：遥控器永远优先——CH5 直接指定底盘听谁（状态存于 host）
+    // RC的控制源仲裁：遥控器永远优先——CH5 直接指定底盘听谁（状态存于 host）
     const ControlSource src = (mode > 0) ? ControlSource::HOST
                                          : ((mode < 0) ? ControlSource::RC : ControlSource::STOP);
     host.set_control_source(src);

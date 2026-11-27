@@ -1,6 +1,6 @@
 /**
  * @file key_task.cpp
- * @brief 按键任务：50 ms 轮询 key1 / key2，把 PRESS / SHORT / LONG 事件打到调试串口
+ * @brief 按键任务：50 ms 轮询 key1 / key2，处理短按/长按并切换出生点、安全区
  * @date 2026-11-21
  *
  * @note 轮询周期与消抖/长按阈值一起决定手感（BspKey：时间 = 计数 × 周期）：
@@ -13,9 +13,9 @@
 
 #include "app_task.hpp"
 
-#include "board_cfg.hpp"             // key1 / key2 / print_uart(bsp_uart8)
+#include "board_cfg.hpp"             // key1 / key2
 #include "bsp/bsp_key.hpp"           // BspKey::Event
-#include "module_cfg.hpp"            // 出生点 / 安全区 / field_ui::sent_ms
+#include "module_cfg.hpp"            // 出生点 / 安全区 / field_page::notify_sent
 #include "service/system/system.hpp" // sys_state
 
 #include "FreeRTOS.h" // IWYU pragma: keep
@@ -35,36 +35,6 @@ static volatile uint32_t key2_events = 0U; ///< key2 产生的事件总数
 
 /* ==================== */
 
-
-/* ==================== 内部辅助 ==================== */
-
-/** @brief 把事件打成一行（人按按钮的频率很低，直接 printf 不会淹掉串口） */
-static void report(const char *name, BspKey::Event ev){
-  switch (ev)
-  {
-  case BspKey::Event::PRESS:
-    (void)print_uart("[key] %s press\r\n", name);
-    break;
-  case BspKey::Event::SHORT:
-    (void)print_uart("[key] %s short\r\n", name);
-    break;
-  case BspKey::Event::LONG:
-    (void)print_uart("[key] %s long\r\n", name);
-    break;
-  default:
-    break;
-  }
-}
-
-/** @brief 当前毫秒数（tick → ms） */
-static uint32_t now_ms()
-{
-  return static_cast<uint32_t>(xTaskGetTickCount() * 1000U / configTICK_RATE_HZ);
-}
-
-/* ==================== */
-
-
 /* ==================== 任务 ==================== */
 
 extern "C" void key_task(void *argument)
@@ -82,44 +52,36 @@ extern "C" void key_task(void *argument)
     if (e1 != BspKey::Event::NONE)
     {
       key1_events = key1_events + 1U; // volatile 上不用 ++（C++20 起弃用）
-      report("KEY1", e1);
 
       // KEY1 短按：出生点 1 → 2 → 3 → 4 → 1（只改本地值，不发）
       if (e1 == BspKey::Event::SHORT)
       {
         host.next_spawn();
-        (void)print_uart("[field] spawn=%u\r\n", static_cast<unsigned>(host.spawn_id()));
       }
 
       // KEY1 长按：把当前出生点/安全区推送给上位机
       if (e1 == BspKey::Event::LONG)
       {
         host.send_field_now();
-        field_ui::sent_ms = now_ms();
-        (void)print_uart("[field] push spawn=%u zone=%u\r\n", static_cast<unsigned>(host.spawn_id()),
-                         static_cast<unsigned>(host.safe_zone()));
+        field_page.notify_sent();
       }
     }
 
     if (e2 != BspKey::Event::NONE)
     {
       key2_events = key2_events + 1U;
-      report("KEY2", e2);
 
       // KEY2 短按：安全区 1 ↔ 2（只改本地值，不发）
       if (e2 == BspKey::Event::SHORT)
       {
         host.toggle_zone();
-        (void)print_uart("[field] safe_zone=%u\r\n", static_cast<unsigned>(host.safe_zone()));
       }
 
       // KEY2 长按：推送给上位机
       if (e2 == BspKey::Event::LONG)
       {
         host.send_field_now();
-        field_ui::sent_ms = now_ms();
-        (void)print_uart("[field] push spawn=%u zone=%u\r\n", static_cast<unsigned>(host.spawn_id()),
-                         static_cast<unsigned>(host.safe_zone()));
+        field_page.notify_sent();
       }
     }
 

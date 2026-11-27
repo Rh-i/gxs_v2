@@ -27,11 +27,8 @@ Omni3Chassis chassis({.motor           = {&motor1, &motor2, &motor3},
 /** @brief 上位机协议执行器（逻辑全在 host.cpp） */
 Host host;
 
-/* 场地页的按键共享状态：key_task 写，oled_task 读 */
-namespace field_ui
-{
-volatile uint32_t sent_ms = 0U;
-} // namespace field_ui
+/** @brief 场地页（逻辑全在 field_page.cpp） */
+FieldPage field_page;
 
 
 /* ==================== */
@@ -44,6 +41,7 @@ volatile uint32_t sent_ms = 0U;
 void module_init(void)
 {
   chassis.init();
+  field_page.init();
 }
 
 /* ==================== */

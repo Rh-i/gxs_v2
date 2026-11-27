@@ -35,7 +35,7 @@ FreeRTOS（CMSIS_V2），tick 1 kHz。优先级从高到低：
 | `key_task`    | 50 ms      | Normal (24) | KEY1 / KEY2 消抖与短按、长按识别               |
 | `servo_task`  | 50 Hz      | Normal (24) | 舵机目标角推进                                 |
 | `remote_task` | 100 Hz     | Normal (24) | 读 R9DS，按 CH5 决定控制源                     |
-| `oled_task`   | 40 ms 节拍 | Low (8)     | 场地页，画面不变时不刷屏                       |
+| `oled_task`   | 40 ms 节拍 | Low (8)     | 给节拍；画面与刷屏判断在 `module/field_page` |
 | 库 `sys_task` | 10 ms      | 52          | ICBSP 的串口 / 总线巡检                        |
 | 定时器服务      | —         | 20          | `FIELD_STATUS` 重发                          |
 
@@ -57,10 +57,10 @@ PID。速度环输出的是占空比，`out_max` 为 100。
 [`user/docs/上位机协议.md`](user/docs/上位机协议.md)。要点：无版本字段，`AA 55` 帧头，
 `0D 0A` 帧尾，`SUM` 从 `TYPE` 起累加。
 
-**场地页**。OLED 显示四角出生点与红蓝两处安全区，右侧显示当前选中项。KEY1 短按换出生点，
+**场地页**。画面与刷屏判断在 `user/module/field_page.cpp`，`oled_task` 只给 40 ms 节拍，画面不变时不刷。
+OLED 显示四角出生点与红蓝两处安全区，右侧显示当前选中项。KEY1 短按换出生点，
 KEY2 短按换颜色，长按 500 ms 推送 `FIELD_STATUS`（100 ms 一帧，共 10 帧，收到上位机的
-`0xAC` 提前停止）；确认成功后右侧显示
-`已发送` 一秒。
+`0xAC` 提前停止）；确认成功后右侧显示 `已发送` 一秒。
 
 ## 联调
 
@@ -80,8 +80,8 @@ python3 user/tools/proto_test.py -p /dev/ttyACM0 selftest          # 全流程�
 
 UART8 是调试口，`print_uart(...)` 的输出和 VOFA 波形共用这一路。VOFA 用 JustFloat 四通道，
 观察对象由 `motor_monitor_index` 选择（0/1/2 对应三台电机，≥3 停发），测试波形由
-`motor_test_wave` 控制（0 关闭、1 方波、2 正弦、4 开环占空比）。两者都需要在调试器里改
-RAM，改完不用重新烧录。注意 `motor_test_wave` 非 0 时遥控和上位机被屏蔽。
+`motor_test` 控制（0 关闭、1 方波、2 正弦、4 开环占空比）。两者都需要在调试器里改
+RAM，改完不用重新烧录。测试波形不影响遥控 / 上位机，测试时自己别同时下发运动指令。
 
 ## 目录
 
@@ -90,8 +90,8 @@ Core/           CubeMX 生成的初始化与中断
 Drivers/        STM32 HAL 与 CMSIS
 Middlewares/Third_Party/ICBSP   板级库子模块（串口、PWM、编码器、电机、舵机、按键、OLED）
 user/board/     外设实例与 board_init()
-user/module/    底盘运动学、上位机协议执行器、模块层全局实例（chassis / host / 按键状态）
-user/app/       任务实现与任务创建
+user/module/    底盘运动学、上位机协议执行器、场地页（field_page）、模块层全局实例（chassis / host / field_page）
+user/app/       任务实现与任务创建（画面、协议逻辑不在这一层）
 Flash/          OpenOCD / J-Link 烧录脚本
 user/tools/     proto_test.py 协议测试工具
 cmake/          工具链与 CubeMX 接入

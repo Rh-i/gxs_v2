@@ -42,9 +42,8 @@
 /* ==================== 默认任务（freertos.c 的 StartDefaultTask() 转调这里） ==================== */
 
 /**
- * @note CubeMX 默认建的 `defaultTask`（freertos.c 里另有一个 startDefaultTask 入口）。
- *       本工程不用它做业务，只保留一个空循环占位；
- *       真要停掉它，去 CubeMX 的 FREERTOS 配置里把 defaultTask 删掉。
+ * @note CubeMX 建的 `defaultTask` 只做板载 LED 心跳（500 ms 翻转），业务任务都在 app_init() 里创建。
+ *       不需要它就去 CubeMX 的 FREERTOS 配置里把 defaultTask 删掉。
  */
 extern "C" void app_default_task(void *argument)
 {
@@ -58,24 +57,8 @@ extern "C" void app_default_task(void *argument)
   }
 }
 
-
 /* ==================== */
-/* ==================== sys_task 报告 ==================== */
 
-/**
- * @brief sys_task 的周期报告：每 5 s 把维护耗时打到调试串口（库本身不打印，见 system_set_report_hook()）
- * @note 跑在 sys_task 的栈上；printf 的 vsnprintf 要栈，库任务栈 ICBSP_SYS_TASK_STACK 已按这个留了余量。
- */
-[[maybe_unused]] static void sys_report(const SysTaskStats *stats)
-{
-  (void)print_uart("[sys] time=%lus cycle=%luus avg=%luus max=%luus\r\n",
-                   static_cast<unsigned long>(xTaskGetTickCount() / configTICK_RATE_HZ),
-                   static_cast<unsigned long>(stats->last_us),
-                   static_cast<unsigned long>(stats->avg_us),
-                   static_cast<unsigned long>(stats->max_us));
-}
-
-/* ==================== */
 /* ==================== 入口 ==================== */
 
 extern "C" void app_init(void)
@@ -88,11 +71,8 @@ extern "C" void app_init(void)
   //    详细顺序与失败处理见 user/board/board_cfg.cpp
   board_init();
 
-  // 3. 模块层：三全向轮底盘（依赖 motor1/2/3 已 init）
+  // 3. 模块层：底盘、场地页队列（依赖 motor1/2/3 已 init）
   module_init();
-
-  //    sys_task 的维护耗时：库只计数（全局 sys_task_stats），要打印就在这里接回调；不要可以删掉这一行。
-  //  system_set_report_hook(sys_report, 5000U);
 
   // 4. 业务任务
   //    任务入口开头都先调 sys_state.wait_running()（原因见文件头）。
@@ -116,13 +96,12 @@ extern "C" void app_init(void)
   ICBSP_CHECK(xTaskCreate(remote_task, "remote", 1024, NULL, osPriorityNormal, NULL) == pdPASS);
 
   //    电机监控任务：1 kHz 把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat
-  //    发给 VOFA+（UART8，921600）。观察对象：motor_monitor_index（0/1/2 → motor1/2/3）
-  //    测试波形：motor_test_wave（0 = 关，1 = 方波，2 = 正弦，4 = 开环 ±50% 占空比）
-  //    注意：非 0 时 remote_task 会让出底盘，遥控/上位机不可用
+  //    发给 VOFA+（UART8）。观察对象 motor_monitor_index，测试波形 motor_test（调试用，默认不建）
   // ICBSP_CHECK(xTaskCreate(motor_monitor_task, "mon", 512, NULL, osPriorityNormal, NULL) == pdPASS);
-  //    OLED 场地页任务：显示出生点与安全区颜色，按键后刷新（I2C1，最低优先级）
+
+  //    OLED 任务：40 ms 节拍，画面与刷屏判断在 module/field_page（I2C1，最低优先级）
   ICBSP_CHECK(xTaskCreate(oled_task, "oled", 512, NULL, osPriorityLow, NULL) == pdPASS);
-  
+
   // 5. 放行：置运行位，放行所有在 wait_running() 上等待的任务。
   //    初始化阶段有失败记录（例如 CAN 节点注册失败、外设 init() 失败）时，
   //    这里会断言停机，fault_record 记下本行。
