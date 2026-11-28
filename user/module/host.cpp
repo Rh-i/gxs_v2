@@ -22,7 +22,10 @@ namespace
  */
 constexpr uint32_t HOST_TX_TIMEOUT_MS = 5U;
 
-/** @brief 上位机所在的串口（USART1，PB6/PB7，921600）；换口只改这一行 */
+/**
+ * @brief 上位机所在的串口（USART1，PB6/PB7，921600）
+ * @note 必须与 `host_task` 里 `receive()` 用的 `bsp_uart1` 是同一个口。
+ */
 auto &host_uart = bsp_uart1;
 
 /* CMD_MOVE 的执行参数（开环近似：按“距离/速度”定时长，位置精度由上位机闭环兜底） */
@@ -139,50 +142,36 @@ uint8_t Host::safe_zone() const
 /* ==================== */
 
 
-/* ==================== 主循环 ==================== */
+/* ==================== 初始化与处理 ==================== */
 
-/**
- * @brief 阻塞收帧的主循环（事件驱动）
- *
- * @note 只有一个阻塞点：`receive()`。串口来 1 个字节就醒，不来就睡到下一个计时任务
- *       到点（`_wait_ms()`）；没有任何计时任务时睡 `portMAX_DELAY`，**不轮询也不空转**。
- * @note 顺序固定：收 → 仲裁 → 计时 → 运动推进 → 变化补发。
- */
-void Host::poll()
+/** @brief 建场地信息重发定时器（只在 module_init() 里调一次） */
+void Host::init()
 {
-  // 场地信息重发用的软件定时器（100 ms 自动重载，由 send_field_now() 启停）
   if (_field_timer == nullptr)
   {
     _field_timer = xTimerCreate("field", pdMS_TO_TICKS(FIELD_PUSH_PERIOD_MS), pdTRUE, this,
                                 _field_timer_cb);
   }
+}
 
-  _send_state(); // 上电同步一次控制源（场地信息由按键长按直接发）
-
-  _last_src = _source;
-
-  for (;;)
+/**
+ * @brief 一次处理：收帧执行 → 排空 → 仲裁 → 计时 → 运动推进 → 变化补发
+ *
+ * @note 不阻塞：串口等待在 `host_task` 的 `receive()` 里，这里只处理已收到的字节。
+ */
+void Host::process(const uint8_t *data, size_t n)
+{
+  if ((data != nullptr) && (n > 0U))
   {
-    uint8_t chunk[64];
-    size_t  got = 0U;
-
-    // 唯一的等待点：有数据 / 到点 / 永久睡
-    if (host_uart.receive(chunk, sizeof(chunk), _wait_ms(), &got) == Status::IO_ERROR)
-    {
-      vTaskDelay(pdMS_TO_TICKS(10U)); // 串口没起来：别空转，退避一下
-    }
-    if (got > 0U)
-    {
-      _feed(chunk, got);
-    }
-
-    _drain_rx(); // 把这一轮积压的排空（非阻塞）
-
-    _arbitrate();
-    _expire_timed();
-    _motion_step();
-    _publish_changes();
+    _feed(data, n);
   }
+
+  _drain_rx(); // 把这一轮积压的排空（非阻塞）
+
+  _arbitrate();
+  _expire_timed();
+  _motion_step();
+  _publish_changes();
 }
 
 /* ==================== */
@@ -193,9 +182,9 @@ void Host::poll()
 /** @brief 把字节喂给解析器；凑出一帧就立即执行 */
 void Host::_feed(const uint8_t *data, size_t n)
 {
+  host_proto::Frame f; // 一次调用复用，不逐字节构造（Frame 带 48 B 载荷）
   for (size_t i = 0U; i < n; ++i)
   {
-    host_proto::Frame f;
     if (_parser.push(data[i], &f))
     {
       _handle(f);
@@ -216,7 +205,7 @@ void Host::_drain_rx()
 }
 
 /** @brief 到下一个计时任务还有多久；没有就永久睡 */
-uint32_t Host::_wait_ms() const
+uint32_t Host::wait_ms() const
 {
   const uint32_t now  = now_ms();
   uint32_t       wait = portMAX_DELAY;
@@ -449,7 +438,7 @@ void Host::_send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
   }
 }
 
-/** @brief 下行帧序号：主循环与按键任务都会发帧，用临界区保护 */
+/** @brief 下行帧序号：host_task 与按键任务都会发帧，用临界区保护 */
 uint8_t Host::_next_seq()
 {
   taskENTER_CRITICAL();
@@ -472,13 +461,15 @@ void Host::_send_pong()
   _send_frame(host_proto::PONG, pl, sizeof(pl));
 }
 
-void Host::_send_state()
+void Host::send_state()
 {
   uint8_t pl[7];
   pl[0] = static_cast<uint8_t>(_source);
   host_proto::put_u16(&pl[1], 0U); // fault_bits：暂未使用
   host_proto::put_u32(&pl[3], now_ms());
   _send_frame(host_proto::STATE, pl, sizeof(pl));
+
+  _last_src = _source; // 已同步：下次变化才需要补发
 }
 
 void Host::_send_event(uint8_t code, uint8_t data)
@@ -628,8 +619,7 @@ void Host::_publish_changes()
 {
   if (_source != _last_src)
   {
-    _last_src = _source;
-    _send_state();
+    send_state(); // 内部会把 _last_src 对齐
   }
 }
 

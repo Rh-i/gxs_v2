@@ -33,52 +33,60 @@ size_t pack(uint8_t *out, uint8_t type, uint8_t seq, const uint8_t *payload, uin
   }
 
   // 累加和：从 TYPE 起到载荷末尾（不含两个帧头字节）
-  uint8_t sum = 0U;
-  for (size_t i = 2U; i < (5U + len); ++i)
-  {
-    sum = static_cast<uint8_t>(sum + out[i]);
-  }
-  out[5U + len] = sum;
+  out[5U + len] = checksum(&out[2], 3U + len);
   out[6U + len] = EOF1;
   out[7U + len] = EOF2;
 
-  return 8U + len;
+  return OVERHEAD + len;
 }
 
 void put_i16(uint8_t *p, int16_t v)
 {
-  p[0] = static_cast<uint8_t>(static_cast<uint16_t>(v) & 0xFFU);
-  p[1] = static_cast<uint8_t>(static_cast<uint16_t>(v) >> 8);
+  put_u16(p, static_cast<uint16_t>(v)); // 负值按补码取模，低 16 位就是小端原始字节
 }
 
 void put_u16(uint8_t *p, uint16_t v)
 {
-  p[0] = static_cast<uint8_t>(v & 0xFFU);
-  p[1] = static_cast<uint8_t>(v >> 8);
+  for (uint8_t i = 0U; i < 2U; ++i)
+  {
+    p[i] = static_cast<uint8_t>(v >> (8U * i));
+  }
 }
 
 void put_u32(uint8_t *p, uint32_t v)
 {
-  p[0] = static_cast<uint8_t>(v & 0xFFU);
-  p[1] = static_cast<uint8_t>((v >> 8) & 0xFFU);
-  p[2] = static_cast<uint8_t>((v >> 16) & 0xFFU);
-  p[3] = static_cast<uint8_t>((v >> 24) & 0xFFU);
+  for (uint8_t i = 0U; i < 4U; ++i)
+  {
+    p[i] = static_cast<uint8_t>(v >> (8U * i));
+  }
 }
 
 int16_t get_i16(const uint8_t *p)
 {
-  return static_cast<int16_t>(static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8));
+  const uint16_t u = get_u16(p);
+  int16_t        v;
+  memcpy(&v, &u, sizeof(v)); // 位重解释：避开 int16_t 超范围转换的实现定义行为
+  return v;
 }
 
 uint16_t get_u16(const uint8_t *p)
 {
-  return static_cast<uint16_t>(static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8));
+  return static_cast<uint16_t>(p[0] | (p[1] << 8));
 }
 
 uint32_t get_u32(const uint8_t *p)
 {
-  return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
-         (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+  return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) | (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+}
+
+uint8_t checksum(const uint8_t *p, size_t n)
+{
+  uint8_t sum = 0U;
+  for (size_t i = 0U; i < n; ++i)
+  {
+    sum = static_cast<uint8_t>(sum + p[i]);
+  }
+  return sum;
 }
 
 /* ==================== */
@@ -142,18 +150,12 @@ bool Parser::push(uint8_t byte, Frame *out)
       continue;
     }
 
-    const size_t total = 8U + len; // 头部 5 + 载荷 + 累加和 1 + 帧尾 2
+    const size_t total = OVERHEAD + len; // 头部 5 + 载荷 + 累加和 1 + 帧尾 2
     if (_n < total)
       return false;
 
     // 4. 累加和：从 TYPE 起到载荷末尾
-    uint8_t sum = 0U;
-    for (size_t i = 2U; i < (5U + len); ++i)
-    {
-      sum = static_cast<uint8_t>(sum + _buf[i]);
-    }
-
-    if ((sum != _buf[5U + len]) || (_buf[6U + len] != EOF1) || (_buf[7U + len] != EOF2))
+    if ((checksum(&_buf[2], 3U + len) != _buf[5U + len]) || (_buf[6U + len] != EOF1) || (_buf[7U + len] != EOF2))
     {
       _drop(1U);
       continue;

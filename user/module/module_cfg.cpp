@@ -1,6 +1,6 @@
 #include "module_cfg.hpp"
 
-#include "board_cfg.hpp" // motor1/2/3
+#include "board_cfg.hpp" // motor1/2/3 / oled
 
 
 // 轮心到车体中心的距离 (cm)：当前按 10 cm 填，实测后改这里。
@@ -27,8 +27,8 @@ Omni3Chassis chassis({.motor           = {&motor1, &motor2, &motor3},
 /** @brief 上位机协议执行器（逻辑全在 host.cpp） */
 Host host;
 
-/** @brief 场地页（逻辑全在 field_page.cpp） */
-FieldPage field_page;
+/** @brief 场地页：构造时注入屏实例（逻辑全在 field_page.cpp） */
+FieldPage field_page({.oled = &oled});
 
 
 /* ==================== */
@@ -41,6 +41,7 @@ FieldPage field_page;
 void module_init(void)
 {
   chassis.init();
+  host.init();
   field_page.init();
 }
 

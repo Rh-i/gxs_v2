@@ -9,8 +9,8 @@
 
 #include "app_task.hpp"
 
-#include "board_cfg.hpp"                // motor1/2/3
-#include "service/system/system.hpp"    // sys_state
+#include "board_cfg.hpp"             // motor1/2/3
+#include "service/system/system.hpp" // sys_state
 
 #include "FreeRTOS.h" // IWYU pragma: keep
 #include "task.h"
@@ -25,7 +25,10 @@ constexpr uint32_t MOTOR_TASK_PERIOD_MS = 1U;
 /**
  * @brief 电机速度环任务：按 MOTOR_TASK_PERIOD_MS 周期跑三路电机的 update()
  *
- * @note dt 用 bsp_dwt 实测（秒）而不是名义周期：任务被抢占/抖动时，PID 的 I、D 仍然对得上真实时间。
+ * @note dt 用 bsp_dwt 实测（秒）：被抢占/抖动时，速度换算（增量/dt）、反馈低通的 alpha、
+ *       SPEED_TIME 计时都按真实时间算，不受名义周期影响。
+ * @note PID 的 ki / kd 是**每拍量纲**（`PID::calc` 不乘 dt）：改 MOTOR_TASK_PERIOD_MS
+ *       会让 I、D 的等效强度跟着变，需要重新标定（见 device_motor.hpp 文件头）。
  * @note 只处理已绑定的电机：没填绑定的电机直接跳过，不会碰到空指针。
  */
 extern "C" void motor_task(void *argument)

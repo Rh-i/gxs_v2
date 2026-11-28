@@ -20,8 +20,8 @@
 #include <stdint.h>
 
 
-/** @brief 主循环节拍 (ms) */
-constexpr uint32_t OLED_PERIOD_MS = 200U;
+/** @brief 主循环节拍 (ms)：40 ms 与闪烁（80/60 ms）和「已发送」1 s 的时序匹配 */
+constexpr uint32_t OLED_PERIOD_MS = 40U;
 
 
 extern "C" void oled_task(void *argument)

@@ -13,7 +13,7 @@
  *
  *   所以“改库的行为”= 改本文件的宏，不用改库源码；换板 = 换一份本文件。
  *
- * 【四组宏怎么理解】
+ * 【三类宏怎么理解（下文按外设分节列出）】
  *   ① 功能开关：决定“这段代码编不编译、这些任务建不建”——关掉省 Flash/RAM，但功能就没了
  *   ② 库任务：优先级与栈深——决定实时性和会不会栈溢出
  *   ③ 外设参数：队列深度、超时、缓冲区大小——决定吞吐、丢帧与阻塞时长
@@ -32,8 +32,7 @@
 #ifndef HARDWARE_CONFIG_H
 #define HARDWARE_CONFIG_H
 
-#include "FreeRTOS.h" // IWYU pragma: keep（configMAX_PRIORITIES）
-#include "task.h"     // IWYU pragma: keep（configMAX_PRIORITIES）
+#include "FreeRTOS.h" // IWYU pragma: keep（configMAX_PRIORITIES 来自 FreeRTOSConfig.h）
 
 /* ==================== ① 功能开关：关掉就不编译对应代码、也不创建对应任务 ==================== */
 /*
@@ -59,9 +58,9 @@
  */
 // <ICBSP-GEN switches>
 // 由 tools/integrate.py 按 .ioc 与接入选择生成：要改就改选择后重新运行；手改本区会被检测到、拒绝覆盖
-#define ICBSP_SYS_TASK_ENABLE 1 ///< 系统维护任务 sys_task
-#define ICBSP_CAN_RX_ENABLE 0 ///< CAN 接收路径（can_rx_task + 接收节点）
-#define ICBSP_CAN_TX_ENABLE 0 ///< CAN 发送路径（can_tx_task + 发送节点）
+#define ICBSP_SYS_TASK_ENABLE 1    ///< 系统维护任务 sys_task
+#define ICBSP_CAN_RX_ENABLE 0      ///< CAN 接收路径（can_rx_task + 接收节点）
+#define ICBSP_CAN_TX_ENABLE 0      ///< CAN 发送路径（can_tx_task + 发送节点）
 #define ICBSP_UART_PATROL_ENABLE 1 ///< sys_task 里的串口巡检
 // </ICBSP-GEN switches 8edc5670>
 
@@ -113,9 +112,7 @@
  *        要用就自己改成 1；F4 没有硬件 FIFO，本宏在 F4 上必须为 0（库里有 static_assert 拦）。 */
 #define ICBSP_UART_ENABLE_FIFO 0
 
-/* 注意：`BspUart::printf()` 的等待上限目前是**库内固定值**（取锁 10 ms / 入队 10 ms，
- * 见 code/bsp/bsp_uart.hpp 的 PRINTF_TIMEOUT_MS），没有做成可调宏；调试打印开关 ICBSP_UART_PRINT_ENABLE 也在
- * board_cfg.hpp（要绑串口实例）。详见文件头“不在这里的两项”。 */
+/* 注意：printf 的取锁 / 入队等待是库内固定值（各 10 ms），调试打印开关在 board_cfg.hpp，详见文件头。 */
 
 /* ==================== */
 /* ==================== SPI ==================== */

@@ -62,7 +62,7 @@ extern "C"
    * @brief OLED 场地页任务：只给 40 ms 节拍，画面与刷屏判断在 `module/field_page`
    * @param argument 任务参数（未使用，NULL）
    * @note 一整帧 I²C 刷新是阻塞的（约 24~26 ms @400 kHz），所以本任务用最低优先级。
-   *       OLED 实例定义在 `board_cfg.cpp`；没接屏时每 5 s 重试 init，不影响其它任务。
+   *       OLED 实例定义在 `board_cfg.cpp`；没接屏时 `update()` 直接返回，不影响其它任务。
    */
   void oled_task(void *argument);
 

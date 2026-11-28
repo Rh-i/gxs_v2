@@ -84,7 +84,6 @@ extern "C" void key_task(void *argument)
         field_page.notify_sent();
       }
     }
-
     vTaskDelayUntil(&wake_time, pdMS_TO_TICKS(KEY_TASK_PERIOD_MS));
   }
 }

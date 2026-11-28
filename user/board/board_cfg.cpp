@@ -76,7 +76,7 @@ DeviceMotor motor2({.pwm_a              = &bsp_pwm_tim12_ch1,
                     .pwm_b              = &bsp_pwm_tim12_ch2,
                     .encoder            = &bsp_encoder_tim1,
                     .encoder_lines      = MOTOR_ENCODER_LINES,
-                    .encoder_multiplier = MOTOR_ENCODER_MULTIPLIER, 
+                    .encoder_multiplier = MOTOR_ENCODER_MULTIPLIER,
                     .gear_ratio         = MOTOR_GEAR_RATIO,
                     .wheel_diameter_cm  = MOTOR_WHEEL_DIAMETER_CM,
                     .speed_lpf_hz       = 100.0f, // 速度反馈低通 100 Hz
@@ -144,17 +144,11 @@ void board_init(void)
   // 舵机上电默认中位：这里只登记目标，真正的 PWM 由 servo_task 的周期 update() 写入
   servo1.set_angle(SERVO_MID_DEG);
   servo2.set_angle(SERVO_MID_DEG);
-  ICBSP_CHECK(r9ds.init() == Status::OK);  // UART5
+  ICBSP_CHECK(r9ds.init() == Status::OK); // UART5
 
-  // ④ 可选外设：OLED（I²C1）。没接屏/接线错时只静默继续，由 oled_task 低频重试，不影响整机。
+  // ④ 可选外设：OLED（I²C1）。没接屏/接线错时只静默继续，oled_task 会一直跳过绘制，
+  //    不影响整机。
   (void)oled.init(&hi2c1, 0x3C, IicOled::Rotation::ROT_0);
 }
 
-/* ==================== */
-
-
-/* ==================== 中断转调（生成的设备用到 EXTI 时在这里生成 HAL_GPIO_EXTI_Callback；宿主别处就不要再定义它） ==================== */
-// <ICBSP-GEN callbacks>
-// 由 tools/integrate.py 按 .ioc 与接入选择生成：要改就改选择后重新运行；手改本区会被检测到、拒绝覆盖
-// </ICBSP-GEN callbacks acb74ce2>
 /* ==================== */

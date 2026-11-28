@@ -78,7 +78,7 @@
 #include "device/motor/device_motor.hpp"
 #include "device/remote/device_r9ds.hpp"
 #include "device/screen/iic_oled.hpp" // IicOled（I²C OLED）
-#include "main.h" // IWYU pragma: keep（GPIO 标签宏）
+#include "main.h"                     // IWYU pragma: keep（GPIO 标签宏）
 #include "tim.h"
 #include "usart.h"
 // </ICBSP-GEN includes 7b269904>
@@ -104,6 +104,7 @@ inline ICBSP_DMA_BUFFER(bsp_uart8) BspUartT<uart_mode::dma, 128, 512> bsp_uart8(
 /// USART10：预留（PE2/PE3，921600 8N1；上下位机已改走 USART1）
 inline ICBSP_DMA_BUFFER(bsp_uart10) BspUartT<uart_mode::dma, 512, 512> bsp_uart10({.huart = &huart10, .mode = UartDir::TxRx, .baudrate = 921600U});
 /// TIM2_CH3 / CH4：电机1 H 桥（PB10/PB11，10 kHz）
+
 inline BspPwm bsp_pwm_tim2_ch3({.htim = &htim2, .channel = TIM_CHANNEL_3, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
 inline BspPwm bsp_pwm_tim2_ch4({.htim = &htim2, .channel = TIM_CHANNEL_4, .timer_clk_hz = 275000000UL, .prescaler = 0U, .period = 27499U});
 /// TIM12_CH1 / CH2：电机2 H 桥（PB14/PB15，10 kHz）
@@ -115,16 +116,19 @@ inline BspPwm bsp_pwm_tim8_ch2({.htim = &htim8, .channel = TIM_CHANNEL_2, .timer
 /// TIM5_CH1 / CH2：舵机（PA0/PA1，50 Hz / 20 ms，1 计数 = 1 µs）
 inline BspPwm bsp_pwm_tim5_ch1({.htim = &htim5, .channel = TIM_CHANNEL_1, .timer_clk_hz = 275000000UL, .prescaler = 274U, .period = 19999U});
 inline BspPwm bsp_pwm_tim5_ch2({.htim = &htim5, .channel = TIM_CHANNEL_2, .timer_clk_hz = 275000000UL, .prescaler = 274U, .period = 19999U});
+
 /// TIM3：编码器（PA6/PA7）→ 电机1
 inline BspEncoder bsp_encoder_tim3({.htim = &htim3, .invert = false});
 /// TIM1：编码器（PE9/PE11）→ 电机2
 inline BspEncoder bsp_encoder_tim1({.htim = &htim1, .invert = false});
 /// TIM4：编码器（PD12/PD13）→ 电机3
 inline BspEncoder bsp_encoder_tim4({.htim = &htim4, .invert = false});
+
 /// KEY1：PE4，GPIO 输入（板上已外部上拉），按下为低。key_task 按 50 ms 轮询：消抖 2×=100 ms、长按 10×=500 ms
 inline BspKey key1({.port = KEY1_GPIO_Port, .pin = KEY1_Pin, .active_low = true, .debounce_cnt = 2U, .long_press_cnt = 10U});
 /// KEY2：PE5，参数同 key1（外部上拉）
 inline BspKey key2({.port = KEY2_GPIO_Port, .pin = KEY2_Pin, .active_low = true, .debounce_cnt = 2U, .long_press_cnt = 10U});
+
 /// LED1：PC13，GPIO 输出（CubeMX 里初始电平 Reset；板上低电平点亮时也就对应“亮”）
 inline BspGpio led1({.port = LED1_GPIO_Port, .pin = LED1_Pin});
 
@@ -149,14 +153,17 @@ extern DeviceMotor motor1;
 extern DeviceMotor motor2;
 /// 电机3：PWM TIM8 + 编码器 TIM4
 extern DeviceMotor motor3;
+
 /// 舵机1：TIM5_CH1（270°，500~2500 µs）
 extern DeviceServo servo1;
 /// 舵机2：TIM5_CH2（270°，500~2500 µs）
 extern DeviceServo servo2;
+
 /// R9DS 遥控：UART5（SBUS）
 extern DeviceR9dsT<decltype(bsp_uart5)> r9ds;
+
 /// OLED：I²C1（PB8=SCL / PB9=SDA），SSD1306 128×64，地址 0x3C
-/// @note 初始化失败（没接屏/接线错）只静默继续，不影响整机；由 oled_task 低速重试。
+/// @note 初始化失败（没接屏/接线错）只静默继续，不影响整机；`FieldPage::update()` 会一直跳过绘制。
 extern IicOled oled;
 
 /* ==================== */

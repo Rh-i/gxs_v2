@@ -8,16 +8,16 @@
  *   BSP 层没有基类、没有虚函数、也没有“实例数组”，但下面这些地方必须知道
  *   “板子上到底有哪几个实例”：
  *
- *     | 宏                   | 谁展开它                                    | 用来做什么                       |
- *     | -------------------- | ------------------------------------------- | -------------------------------- |
- *     | `ICBSP_CAN_INSTANCES`  | `code/bsp/bsp_can.cpp`                      | FDCAN 的 HAL 回调按句柄找到实例   |
- *     |                      | `code/service/system/system.cpp`                   | 判断有没有发送节点、要不要建 can_tx |
- *     |                      | `code/tasks/can_rx_task.cpp`                | 每条总线轮询取帧并分发           |
- *     |                      | `code/tasks/can_tx_task.cpp`                | 每条总线下发聚合帧               |
- *     |                      | `code/tasks/sys_task.cpp`                   | 每条总线的 Bus-Off 恢复          |
- *     | `ICBSP_UART_INSTANCES` | `code/bsp/bsp_uart.cpp`                     | UART 的 HAL 回调按句柄找到实例   |
- *     |                      | `code/tasks/sys_task.cpp`                   | 串口收发补救巡检                 |
- *     | `ICBSP_SPI_INSTANCES`  | `code/bsp/bsp_spi.cpp`                      | SPI 的 HAL 回调按句柄找到实例    |
+ *     | 宏                    | 谁展开它                                  | 用来做什么                        |
+ *     | --------------------  | --------------------------------------- | -------------------------------- |
+ *     | `ICBSP_CAN_INSTANCES` | `code/bsp/bsp_can.cpp`                  | FDCAN 的 HAL 回调按句柄找到实例     |
+ *     |                       | `code/service/system/system.cpp`        | 判断有没有发送节点、要不要建 can_tx   |
+ *     |                       | `code/tasks/can_rx_task.cpp`            | 每条总线轮询取帧并分发               |
+ *     |                       | `code/tasks/can_tx_task.cpp`            | 每条总线下发聚合帧                  |
+ *     |                       | `code/tasks/sys_task.cpp`               | 每条总线的 Bus-Off 恢复            |
+ *     | `ICBSP_UART_INSTANCES`| `code/bsp/bsp_uart.cpp`                 | UART 的 HAL 回调按句柄找到实例      |
+ *     |                       | `code/tasks/sys_task.cpp`               | 串口收发补救巡检                   |
+ *     | `ICBSP_SPI_INSTANCES` | `code/bsp/bsp_spi.cpp`                  | SPI 的 HAL 回调按句柄找到实例       |
  *
  *   做法是编译期展开：`ICBSP_CAN_INSTANCES(X)` 展开成 `X(bsp_can1) X(bsp_can2)`，
  *   调用方把 `X` 定义成一段代码，于是“对每个实例做同一件事”，中断里也没有间接跳转。
@@ -40,7 +40,7 @@
 #ifndef __BOARD_INSTANCES_HPP__
 #define __BOARD_INSTANCES_HPP__
 
-#include "board_cfg.hpp"// IWYU pragma: keep
+#include "board_cfg.hpp" // IWYU pragma: keep
 
 /**
  * @brief CAN 实例列表
@@ -62,11 +62,13 @@
 // <ICBSP-GEN instances>
 // 由 tools/integrate.py 按 .ioc 与接入选择生成：要改就改选择后重新运行；手改本区会被检测到、拒绝覆盖
 #define ICBSP_CAN_INSTANCES(X) /* 无 */
+
 #define ICBSP_UART_INSTANCES(X) \
-  X(bsp_uart1) \
-  X(bsp_uart5) \
-  X(bsp_uart8) \
+  X(bsp_uart1)                  \
+  X(bsp_uart5)                  \
+  X(bsp_uart8)                  \
   X(bsp_uart10)
+
 #define ICBSP_SPI_INSTANCES(X) /* 无 */
 // </ICBSP-GEN instances d66d7a3a>
 

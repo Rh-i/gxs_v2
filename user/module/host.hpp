@@ -10,7 +10,7 @@
  * 【分层】
  *   `host_protocol.*`  纯编解码（帧格式、累加和、解析器）
  *   `host.hpp/.cpp`    本类：协议执行器 —— 独占上位机串口（USART1），把帧变成动作和应答
- *   `user/app/task/host_task.cpp`  只是个壳：`host.poll()` 里是事件驱动的收帧主循环
+ *   `user/app/task/host_task.cpp`  只是个壳：阻塞等待与循环在那里，`host.process()` 做收帧与状态推进
  *
  * 【本类管的三件事】
  *   1. 指令：CMD_VEL / CMD_VEL_TIME / CMD_MOVE / CMD_SERVO / ESTOP
@@ -20,7 +20,7 @@
  * 【生效规则】
  *   - 只有 `ControlSource::HOST` 时速度类指令才执行，否则回 `RES_REJECTED`
  *   - 场地信息：**按键长按时直接发一帧**（`send_field_now()`，`send()` 支持多写者），
- *     主循环不需要为它额外唤醒
+ *     `host_task` 不需要为它额外唤醒
  */
 
 #ifndef __HOST_HPP__
@@ -67,8 +67,9 @@ public:
   /** @brief 安全区 1 ↔ 2（按键短按调用）；只改本地值，不发送 */
   void toggle_zone();
 
-  /** @brief 把当前出生点/安全区直接发给上位机（按键任务长按时调用，不经过主循环） */
+  /** @brief 把当前出生点/安全区直接发给上位机（按键任务长按时调用，不经过收帧循环） */
   void send_field_now();
+
   /** @brief 当前出生点 1~4 */
   uint8_t spawn_id() const;
 
@@ -76,10 +77,29 @@ public:
   uint8_t safe_zone() const;
 
   /**
-   * @brief 主循环：阻塞收帧 → 执行 → 仲裁 → 推进运动状态机 → 变化时补发
-   * @note 永不返回；在 `host_task` 里调用
+   * @brief 建场地信息重发定时器（100 ms 自动重载，由 send_field_now() 启停）
+   * @note 只创不定时器，不发帧：在调度器启动前由 module_init() 调用是安全的。
    */
-  void poll();
+  void init();
+
+  /** @brief 发一帧 STATE（控制源 + 运行时长），并把 _last_src 对齐到当前值 */
+  void send_state();
+
+  /**
+   * @brief 下一次等待的上限 (ms)
+   * @return 到下一个计时任务（CMD_MOVE / CMD_VEL_TIME）的剩余毫秒数；
+   *         没有计时任务时返回 `portMAX_DELAY`（一直睡，不空转）
+   * @note `host_task` 拿它当 `receive()` 的超时：有数据立即醒，没数据就睡到点。
+   */
+  uint32_t wait_ms() const;
+
+  /**
+   * @brief 一次处理：收帧执行 → 排空 → 仲裁 → 计时 → 运动推进 → 变化补发
+   * @param data 刚收到的字节（可空）
+   * @param n    字节数（可为 0，此时只做周期事务）
+   * @note 不阻塞：阻塞等待在 `host_task` 的 `receive()` 里。
+   */
+  void process(const uint8_t *data, size_t n);
 
   /* ==================== */
 
@@ -123,13 +143,6 @@ private:
   /** @brief 非阻塞排空积压（timeout = 0，不等待） */
   void _drain_rx();
 
-  /**
-   * @brief 主循环这次该睡多久
-   * @return 到下一个计时任务（CMD_MOVE / CMD_VEL_TIME）的毫秒数；
-   *         没有任何计时任务时返回 `portMAX_DELAY`（一直睡，不空转）
-   */
-  uint32_t _wait_ms() const;
-
   /** @brief 按 TYPE 分派一帧 */
   void _handle(const host_proto::Frame &f);
 
@@ -162,13 +175,12 @@ private:
 
   void _send_frame(uint8_t type, const uint8_t *payload, uint8_t len);
 
-  /** @brief 取下一个下行帧序号（主循环与按键任务都会发帧，用临界区保护） */
+  /** @brief 取下一个下行帧序号（host_task 与按键任务都会发帧，用临界区保护） */
   uint8_t _next_seq();
 
   void _send_ack(uint8_t acked_type, uint8_t acked_seq, uint8_t result);
 
   void _send_pong();
-  void _send_state();
   void _send_event(uint8_t code, uint8_t data);
 
   /** @brief 结束当前运动任务：回 MOVE_DONE（如有任务）+ 停车 */

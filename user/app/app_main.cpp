@@ -95,12 +95,12 @@ extern "C" void app_init(void)
   //    遥控任务：100 Hz，读 R9DS → 底盘目标（独占 r9ds.update()）。
   ICBSP_CHECK(xTaskCreate(remote_task, "remote", 1024, NULL, osPriorityNormal, NULL) == pdPASS);
 
+  //    OLED 任务：40 ms 节拍，画面与刷屏判断在 module/field_page（I2C1，最低优先级）
+  ICBSP_CHECK(xTaskCreate(oled_task, "oled", 512, NULL, osPriorityLow, NULL) == pdPASS);
+
   //    电机监控任务：1 kHz 把一台（可切换）电机的目标 / 反馈 / PID 输出按 JustFloat
   //    发给 VOFA+（UART8）。观察对象 motor_monitor_index，测试波形 motor_test（调试用，默认不建）
   // ICBSP_CHECK(xTaskCreate(motor_monitor_task, "mon", 512, NULL, osPriorityNormal, NULL) == pdPASS);
-
-  //    OLED 任务：40 ms 节拍，画面与刷屏判断在 module/field_page（I2C1，最低优先级）
-  ICBSP_CHECK(xTaskCreate(oled_task, "oled", 512, NULL, osPriorityLow, NULL) == pdPASS);
 
   // 5. 放行：置运行位，放行所有在 wait_running() 上等待的任务。
   //    初始化阶段有失败记录（例如 CAN 节点注册失败、外设 init() 失败）时，

@@ -58,7 +58,7 @@ volatile uint8_t motor_test = 0U;
 
 /** @brief 下标 → 实例；顺序与 motor_monitor_index 一致 */
 static DeviceMotor *const motor_monitor_list[] = {&motor1, &motor2, &motor3};
-constexpr uint8_t MOTOR_MONITOR_COUNT = static_cast<uint8_t>(sizeof(motor_monitor_list) / sizeof(motor_monitor_list[0]));
+constexpr uint8_t         MOTOR_MONITOR_COUNT  = static_cast<uint8_t>(sizeof(motor_monitor_list) / sizeof(motor_monitor_list[0]));
 
 
 /** @brief 这一拍测试档要写的值：1 方波 / 2 正弦 → 目标速度 (cm/s)，4 → 开环占空比 (%) */
@@ -91,8 +91,8 @@ extern "C" void motor_monitor_task(void *argument)
 
   for (;;)
   {
-    const uint8_t       idx   = motor_monitor_index;
-    const uint8_t       wave  = motor_test;
+    const uint8_t      idx   = motor_monitor_index;
+    const uint8_t      wave  = motor_test;
     DeviceMotor *const motor = (idx < MOTOR_MONITOR_COUNT) ? motor_monitor_list[idx] : nullptr;
 
     if ((motor != nullptr) && (wave != 0U)) // 测试波形：写目标，闭环仍由 motor_task 推进

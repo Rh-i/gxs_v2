@@ -10,14 +10,14 @@
  * 【帧格式】（上下行通用，无版本字段）
  *
  *     0xAA 0x55 | TYPE | SEQ | LEN | PAYLOAD ... | SUM | 0x0D 0x0A
- *       帧头     类型   序号  长度     载荷        累加和   帧尾
+ *       帧头       类型   序号   长度     载荷        累加和   帧尾
  *
  *   - `SUM` = 从 `TYPE` 起、到 `PAYLOAD` 最后一个字节的**无符号 8 位累加和**（不含两个帧头字节）
  *   - `LEN <= MAX_PAYLOAD`，越界帧直接丢弃并重新找帧头
  *   - 多字节数值一律**小端**；角度单位 0.1°、速度 cm/s、角速度 mrad/s
  *
- * 【本文件只做编解码】不碰串口、不碰任务；收发与调度在 `host_task.cpp`，
- * 协议说明给上位机的那份在 `user/module/上位机协议.md`。
+ * 【本文件只做编解码】不碰串口、不碰任务；收发与调度在 `host.cpp`，
+ * 协议说明给上位机的那份在 `user/docs/上位机协议.md`。
  */
 
 #ifndef __HOST_PROTOCOL_HPP__
@@ -37,9 +37,9 @@ constexpr uint8_t SOF2 = 0x55U; ///< 帧头 2
 constexpr uint8_t EOF1 = 0x0DU; ///< 帧尾 1
 constexpr uint8_t EOF2 = 0x0AU; ///< 帧尾 2
 
-constexpr size_t MAX_PAYLOAD = 48U;                         ///< 载荷上限（超过视为错误帧）
-constexpr size_t OVERHEAD    = 8U;                          ///< AA 55 TYPE SEQ LEN SUM 0D 0A
-constexpr size_t MAX_FRAME   = OVERHEAD + MAX_PAYLOAD;      ///< 一整帧的字节上限
+constexpr size_t MAX_PAYLOAD = 48U;                    ///< 载荷上限（超过视为错误帧）
+constexpr size_t OVERHEAD    = 8U;                     ///< AA 55 TYPE SEQ LEN SUM 0D 0A
+constexpr size_t MAX_FRAME   = OVERHEAD + MAX_PAYLOAD; ///< 一整帧的字节上限
 
 /* ==================== */
 
@@ -99,13 +99,19 @@ int16_t  get_i16(const uint8_t *p);
 uint16_t get_u16(const uint8_t *p);
 uint32_t get_u32(const uint8_t *p);
 
-/** @brief 解析出来的一帧 */
+/**
+ * @brief 累加和：从 TYPE 起 n 字节的无符号 8 位和（n = 3 + len，含 TYPE/SEQ/LEN/载荷）
+ * @note `pack()` 与 `Parser` 共用同一实现；上位机工具按同样规则校验。
+ */
+uint8_t checksum(const uint8_t *p, size_t n);
+
+/** @brief 解析出来的一帧（只有 payload[0..len-1] 有效） */
 struct Frame
 {
   uint8_t type = 0U;
   uint8_t seq  = 0U;
   uint8_t len  = 0U;
-  uint8_t payload[MAX_PAYLOAD] = {};
+  uint8_t payload[MAX_PAYLOAD]; ///< 只写 len 字节；读取前必须用 len 校验，不要依赖其余字节
 };
 
 /**

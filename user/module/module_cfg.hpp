@@ -8,7 +8,8 @@
  * @copyright Copyright (c) 2026
  *
  * @note 全局实例在此声明、在 module_cfg.cpp 中实例化；本层的初始化动作收进 module_init()，
- *       在 board_init() 之后调用（依赖三个已绑定的 DeviceMotor）。
+ *       在 board_init() 之后调用（依赖 motor1/2/3 已 init；同时建 Host 的场地重发定时器
+ *       与场地页的事件队列）。
  */
 
 #ifndef __MODULE_CFG_HPP__
@@ -36,7 +37,7 @@ void module_init(void);
 
 extern Omni3Chassis chassis; ///< 三全向轮底盘（M1 右前 / M2 左前 / M3 正后）
 extern Host         host;    ///< 上位机协议执行器（定义见 module_cfg.cpp）
-extern FieldPage    field_page; ///< 场地页（画面 + 刷屏判断，oled_task 只给 40 ms 节拍）
+extern FieldPage    field_page; ///< 场地页（oled 在 module_cfg.cpp 构造时注入）
 
 /* ==================== */
 #endif // __MODULE_CFG_HPP__
